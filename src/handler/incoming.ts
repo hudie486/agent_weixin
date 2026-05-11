@@ -22,6 +22,7 @@ import { extractPeriodicProposal } from "./proposal.js";
 import { handlePeriodicSlash } from "./periodicSlash.js";
 import { handleEnvSlash } from "./envSlash.js";
 import { handleCompileSlash } from "./compileSlash.js";
+import { handleCodeSlash } from "./codeSlash.js";
 import { createLogger } from "../logger.js";
 import { wechatTraceIoEnabled } from "../util/wechatTrace.js";
 import { finalizeWxOutbound, joinWxLines } from "../util/wxRichText.js";
@@ -80,7 +81,8 @@ async function handleHelp(ctx: AppHandlerCtx, msg: IncomingMessage): Promise<voi
     "/周期 help — 周期任务（deliveryMode、简称、/周期 创建）",
     "/环境 help — 管理员：远程写入进程环境变量（注入配置文件）",
     "/reset — 清空本会话 Cursor chatId",
-    "/编译 <仓库URL> [分支] — 拉取构建（管理员）",
+    "/代码 help — 本地/克隆工程、build.sh、产物配置（管理员）",
+    "/编译 <仓库URL> [分支] — 兼容：同 /代码 克隆",
     "/测试 — 回复固定句，检查收发通路",
     "WECHAT_TRACE_IO=1 或 LOG_LEVEL=debug — 日志里打印微信收发摘要（脱敏）",
     "WECHAT_TERMINAL_IO=1 — 终端同步打印微信收发（与 INFO [wx-io] 日志格式一致）",
@@ -128,8 +130,30 @@ export async function handleIncomingMessage(ctx: AppHandlerCtx, msg: IncomingMes
       await handlePeriodicSlash({ notify: ctx.notify, agentCfg: ctx.agentCfg }, msg, slash.rest);
       return;
     }
+    if (slash.name === "代码" || slash.name === "code") {
+      await handleCodeSlash(
+        {
+          notify: ctx.notify,
+          agentCfg: ctx.agentCfg,
+          session: ctx.session,
+          sessionPath: ctx.sessionPath,
+        },
+        msg,
+        slash.rest,
+      );
+      return;
+    }
     if (slash.name === "编译" || slash.name === "build") {
-      await handleCompileSlash(ctx.notify, msg, slash.rest);
+      await handleCompileSlash(
+        {
+          notify: ctx.notify,
+          agentCfg: ctx.agentCfg,
+          session: ctx.session,
+          sessionPath: ctx.sessionPath,
+        },
+        msg,
+        slash.rest,
+      );
       return;
     }
     if (slash.name === "测试") {

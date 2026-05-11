@@ -34,7 +34,7 @@ npm start
 | 会话续聊 | 默认 `CHAT_SESSION_ENABLE=1` 时，为每用户维护 Cursor `chatId`（`--resume`） |
 | 周期任务 | 由 Python 写 `PERIODIC_STATE_PATH`，作业目录在 `PERIODIC_JOB_ROOT/<任务ID>`，入口默认 `run.py` |
 | 环境注入 | `/环境 set` 写入 JSON 并 `merge` 到当前进程，供脚本与 Agent 读取 `process.env` |
-| 编译 | `/编译` 拉取 Git 仓库并执行 `COMPILE_BUILD_CMD`，可选发送产物（见环境变量） |
+| 代码/编译 | `/代码 help` 管理本地/克隆/SSH 工程；有 `build.sh` 时 `/代码 编译` 与修复后自动构建；产物用 glob 配置。`/编译` 仍可用，等同 `/代码 克隆`（`COMPILE_*` 见环境变量） |
 
 ## 微信中的命令
 
@@ -47,7 +47,8 @@ npm start
 | `/周期 创建 schedule …` / `trigger …` | 创建脚本任务（可带 `简称`、deliveryMode） |
 | `/周期 修改 / 删除 / 启用 / 停用 / 运行` | 见 `/周期 help` |
 | `/环境 help` / `list` / `set` / `delete` | 远程环境变量（管理员） |
-| `/编译 <仓库URL> [分支]` | 拉取构建（管理员） |
+| `/代码 help` | 项目登记、build.sh、产物配置、拉取/修复/编译（管理员） |
+| `/编译 <仓库URL> [分支]` | 兼容：同 `/代码 克隆`（管理员） |
 | `/reset` | 清空当前用户在本机的 Cursor 会话 `chatId` |
 | `/测试` | 固定回复「✅ 测试通过」，用于检查收发通路 |
 
@@ -86,6 +87,7 @@ npm start
 - **日志与调试**：`LOG_LEVEL`、`WECHAT_TRACE_IO`、`WECHAT_TERMINAL_IO`
 - **出站代理（微信 fetch）**：`HTTPS_PROXY`、`HTTP_PROXY`、`NO_PROXY`；`WECHATBOT_FETCH_USE_PROXY=0` 可关闭程序内强制绑定（见上文）
 - **展示**：`WX_EMOJI_STYLE`（`full` / `minimal` / `off`）
+- **/代码 模块**：`CODE_PROJECTS_PATH`、`CODE_PROJECT_ROOT_ALLOWLIST`、`CODE_ARTIFACT_GLOB`、`CODE_BUILD_TIMEOUT_MS`、`CODE_GIT_PULL_TIMEOUT_MS`（与 `COMPILE_*` 并列，见 [`.env.example`](./.env.example)）
 
 ## 目录与数据
 
@@ -96,6 +98,7 @@ npm start
 | `data/periodic-state.json` | 周期任务元数据 |
 | `data/periodic-jobs/<id>/` | 各任务工作区与 `run.py` 等 |
 | `data/injected-env.json` | 环境注入键值（可改 `INJECTED_ENV_PATH`） |
+| `data/code-projects.json` | `/代码` 已登记项目（可改 `CODE_PROJECTS_PATH`） |
 
 ## 脚本
 

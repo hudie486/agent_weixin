@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 export type CompileResult =
-  | { ok: true; summary: string; artifactPath: string | null }
+  | { ok: true; summary: string; artifactPath: string | null; cloneSrcDir?: string; cloneWorkDir?: string }
   | { ok: false; summary: string };
 
 function looksLikePrivateHost(hostname: string): boolean {
@@ -135,5 +135,5 @@ export async function runCompileRepo(params: {
   const summary = hit
     ? `构建完成，产物：${path.basename(hit)}`
     : `构建完成，未匹配到产物 glob=${rel}`;
-  return { ok: true, summary, artifactPath: hit };
+  return { ok: true, summary, artifactPath: hit, cloneSrcDir: srcDir, cloneWorkDir: dir };
 }
