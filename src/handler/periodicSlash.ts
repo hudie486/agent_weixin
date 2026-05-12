@@ -11,6 +11,7 @@ import { createLogger } from "../logger.js";
 import { periodicHelpDetail } from "./periodicHelpText.js";
 import { redactPathsForWx } from "../util/redactPathsForWx.js";
 import { joinWxLines } from "../util/wxRichText.js";
+import { PERIODIC_CRON_TZ, validateCronExpressionFive } from "../plugins/periodic/cronResolve.js";
 
 const log = createLogger("periodic-slash");
 
@@ -31,8 +32,14 @@ function isDeliveryMode(s: string): boolean {
 
 type ParsedCreate =
   | {
-      kind: "schedule" | "trigger";
-      intervalMinutes?: number;
+      kind: "schedule";
+      cronExpression: string;
+      deliveryMode: DeliveryMode;
+      description: string;
+      shortName?: string;
+    }
+  | {
+      kind: "trigger";
       deliveryMode: DeliveryMode;
       description: string;
       shortName?: string;
@@ -45,13 +52,20 @@ function parsePeriodicCreate(parts: string[]): ParsedCreate {
   const k0 = (rest[0] ?? "").toLowerCase();
   if (k0 !== "schedule" && k0 !== "trigger") return null;
   let idx = 1;
-  let intervalMinutes: number | undefined;
+
+  let cronExpression: string | undefined;
+
   if (k0 === "schedule") {
-    const mins = Number(rest[idx]);
-    if (!Number.isFinite(mins) || mins < 1) return null;
-    intervalMinutes = mins;
-    idx++;
+    if ((rest[idx] ?? "").toLowerCase() !== "cron") return null;
+    idx += 1;
+    const fields = rest.slice(idx, idx + 5);
+    if (fields.length !== 5) return null;
+    if (fields.some((x) => !String(x ?? "").trim())) return null;
+    cronExpression = fields.map((x) => String(x).trim()).join(" ");
+    if (validateCronExpressionFive(cronExpression, PERIODIC_CRON_TZ)) return null;
+    idx += 5;
   }
+
   let shortName: string | undefined;
   if ((rest[idx] ?? "").toLowerCase() === "简称") {
     const sn = rest[idx + 1]?.trim();
@@ -67,7 +81,17 @@ function parsePeriodicCreate(parts: string[]): ParsedCreate {
   }
   const description = rest.slice(idx).join(" ").trim();
   if (!description) return null;
-  return { kind: k0, intervalMinutes, deliveryMode, description, shortName };
+
+  if (k0 === "trigger") {
+    return { kind: "trigger", deliveryMode, description, shortName };
+  }
+  return {
+    kind: "schedule",
+    cronExpression: cronExpression!,
+    deliveryMode,
+    description,
+    shortName,
+  };
 }
 
 export async function handlePeriodicSlash(
@@ -121,14 +145,16 @@ export async function handlePeriodicSlash(
   if (head === "创建" || head === "create") {
     requireAdminOrThrow(uid);
     const parsed = parsePeriodicCreate(parts);
-    if (!parsed || (parsed.kind === "schedule" && parsed.intervalMinutes == null)) {
+    if (!parsed) {
       await ctx.notify.replyText(
         msg,
         joinWxLines([
           "用法：",
-          "/周期 创建 schedule <分钟> [简称 <名称>] [stdout_nonempty|every_run] <描述>",
+          "/周期 创建 schedule cron <分> <时> <日> <月> <周> [简称 <名称>] [stdout_nonempty|every_run] <描述>",
+          "五段 CRON 与 Linux crontab 一致，按上海时区 Asia/Shanghai 解释（与列表「下次运行」一致）。",
           "/周期 创建 trigger [简称 <名称>] [stdout_nonempty|every_run] <描述>",
-          "示例：/周期 创建 schedule 5 简称 steam任务 every_run 监控好友在线",
+          "示例：/周期 创建 schedule cron */15 * * * * every_run 每 15 分钟巡检",
+          "示例：/周期 创建 schedule cron 0 9 * * * every_run 每天 9:00 日报",
         ]),
         "warn",
       );
@@ -147,7 +173,10 @@ export async function handlePeriodicSlash(
       generationStatus: "pending",
     };
     if (parsed.shortName) body.shortName = parsed.shortName;
-    if (parsed.kind === "schedule") body.intervalMinutes = parsed.intervalMinutes;
+    if (parsed.kind === "schedule") {
+      body.cronExpression = parsed.cronExpression;
+      body.cronTimeZone = PERIODIC_CRON_TZ;
+    }
     let jobId = "";
     try {
       const out = await addJobJson(JSON.stringify(body));

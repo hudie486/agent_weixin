@@ -27,29 +27,28 @@ npm start
 
 | 能力 | 说明 |
 | --- | --- |
-| 私聊对话 | 非斜杠的文本会走 `runAgentStreaming`，并尽量按句向微信推流式进度；终稿可去重 |
+| 私聊对话 | **无向导 pending** 时，非斜杠文本走 `runAgentStreaming` 并尽量推流式进度；**在向导中**仅填参，与普通聊天隔离、不走该 Agent 通路 |
 | 斜杠命令 | 以 `/` 开头（全角 `／` 会被归一成 `/`），见下表 |
 | 用户白名单 | `ALLOWED_USER_IDS` 非空时仅列表内 `userId` 可用；空则不限 |
 | 管理员 | `ADMIN_USER_IDS` 中用户可使用需管理员权限的指令（环境注入、周期任务增删改、编译等） |
 | 会话续聊 | 默认 `CHAT_SESSION_ENABLE=1` 时，为每用户维护 Cursor `chatId`（`--resume`） |
 | 周期任务 | 由 Python 写 `PERIODIC_STATE_PATH`，作业目录在 `PERIODIC_JOB_ROOT/<任务ID>`，入口默认 `run.py` |
 | 环境注入 | `/环境 set` 写入 JSON 并 `merge` 到当前进程，供脚本与 Agent 读取 `process.env` |
-| 代码/编译 | `/代码 help` 管理本地/克隆/SSH 工程；有 `build.sh` 时 `/代码 编译` 与修复后自动构建；产物用 glob 配置。`/编译` 仍可用，等同 `/代码 克隆`（`COMPILE_*` 见环境变量） |
+| 多轮向导 | `/向导` 或 `/菜单` 进入；含**代码**、**周期**、**环境**子向导；向导内纯文本填参，发「退出」结束 |
 
 ## 微信中的命令
 
 | 命令 | 作用 |
 | --- | --- |
 | `/help` | 简短帮助 |
+| `/向导` / `/菜单` | 多步向导：代码 / 周期 / 环境（管理员）；向导内纯文本，发「退出」结束 |
 | `/周期 help` | 周期任务详细说明 |
 | `/周期 列表` | 任务列表（多行、段间双换行） |
 | `/周期 详情 <ID> [路径]` | 任务详情；加 `路径` 或 `path` 才显示本机作业目录 |
 | `/周期 创建 schedule …` / `trigger …` | 创建脚本任务（可带 `简称`、deliveryMode） |
 | `/周期 修改 / 删除 / 启用 / 停用 / 运行` | 见 `/周期 help` |
 | `/环境 help` / `list` / `set` / `delete` | 远程环境变量（管理员） |
-| `/代码 help` | 项目登记、build.sh、产物配置、拉取/修复/编译（管理员） |
-| `/编译 <仓库URL> [分支]` | 兼容：同 `/代码 克隆`（管理员） |
-| `/reset` | 清空当前用户在本机的 Cursor 会话 `chatId` |
+| `/代码 help` | 项目登记、build.sh、产物配置、拉取/修复/编译（管理员）；HTTPS 克隆用 `/代码 克隆` |
 | `/测试` | 固定回复「✅ 测试通过」，用于检查收发通路 |
 
 未授权用户会收到「未授权用户」提示（与业务消息一样经统一换行处理）。
@@ -88,6 +87,7 @@ npm start
 - **出站代理（微信 fetch）**：`HTTPS_PROXY`、`HTTP_PROXY`、`NO_PROXY`；`WECHATBOT_FETCH_USE_PROXY=0` 可关闭程序内强制绑定（见上文）
 - **展示**：`WX_EMOJI_STYLE`（`full` / `minimal` / `off`）
 - **/代码 模块**：`CODE_PROJECTS_PATH`、`CODE_PROJECT_ROOT_ALLOWLIST`、`CODE_ARTIFACT_GLOB`、`CODE_BUILD_TIMEOUT_MS`、`CODE_GIT_PULL_TIMEOUT_MS`（与 `COMPILE_*` 并列，见 [`.env.example`](./.env.example)）
+- **多轮向导**：`WIZARD_STATE_PATH`、`WIZARD_TTL_MS`
 
 ## 目录与数据
 
@@ -99,6 +99,7 @@ npm start
 | `data/periodic-jobs/<id>/` | 各任务工作区与 `run.py` 等 |
 | `data/injected-env.json` | 环境注入键值（可改 `INJECTED_ENV_PATH`） |
 | `data/code-projects.json` | `/代码` 已登记项目（可改 `CODE_PROJECTS_PATH`） |
+| `data/wizard-state.json` | 多轮向导 pending（可改 `WIZARD_STATE_PATH`） |
 
 ## 脚本
 

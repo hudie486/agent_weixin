@@ -20,6 +20,12 @@ export type PeriodicPayload = ScriptPayload | DeprecatedPeriodicPayload;
 
 export type GenerationStatus = "pending" | "ready" | "failed";
 
+/** 每天固定时刻（上海墙钟，与 nextRunAt 的绝对时间一致） */
+export type DailyShanghaiClock = {
+  hour: number;
+  minute: number;
+};
+
 export type PeriodicJob = {
   id: string;
   kind: PeriodicJobKind;
@@ -27,6 +33,14 @@ export type PeriodicJob = {
   enabled: boolean;
   intervalMs: number | null;
   nextRunAt: number | null;
+  /** schedule：标准 5 段 CRON（分 时 日 月 周），由 cronTimeZone 解释（默认 Asia/Shanghai） */
+  cronExpression?: string | null;
+  cronTimeZone?: string | null;
+  /**
+   * 旧版 schedule：interval / daily（无 cronExpression 时由 bump 迁移为 CRON）
+   */
+  scheduleMode?: "interval" | "daily" | null;
+  dailyShanghai?: DailyShanghaiClock | null;
   payload: PeriodicPayload;
   /** 创建时的需求描述（列表摘要来源之一） */
   userPrompt?: string | null;

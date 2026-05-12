@@ -25,7 +25,8 @@ export function periodicHelpDetail(): string {
     "",
     "/周期 列表 — 每任务：⏳ 名称 · 🪪ID · ⏰ 周期与下次执行（触发任务为手动说明）；有错时多一段 ⚠️（路径已脱敏）。",
     "/周期 详情 <ID前缀或完整ID> — 完整字段与上次运行结果",
-    "/周期 创建 schedule <分钟> [简称 <名称>] [stdout_nonempty|every_run] <描述> — 新建脚本任务并由 Agent 生成 run.py",
+    "/周期 创建 schedule cron <分> <时> <日> <月> <周> [简称 <名称>] [stdout_nonempty|every_run] <描述> — 标准 5 段 CRON，  解释（与列表/详情「下次运行」一致）",
+    "CRON 五段含义：分 · 时 · 日 · 月 · 周；常用示例：`*/15 * * * *` 每 15 分钟；`0 9 * * *` 每天 9:00；`0 0 * * 1` 每周一 0:00。",
     "/周期 创建 trigger [简称 <名称>] [stdout_nonempty|every_run] <描述> — 仅手动：/周期 运行",
     "/周期 修改 <任务ID> [补充说明] — 使用创建时的 Cursor 会话（agentChatId）在作业目录续聊改脚本",
     "/周期 删除 <任务ID>",
@@ -34,5 +35,6 @@ export function periodicHelpDetail(): string {
     "",
     "若配置了 ADMIN_USER_IDS：创建、删除、启停、运行、修改 仅管理员；列表与详情不限。",
     "示例：/周期 删除 69cb47a0-faa9-4813-8833-5d295b65a8f3",
+    "示例：/周期 创建 schedule cron 0 9 * * * every_run 每日九点跑日报",
   ]);
 }

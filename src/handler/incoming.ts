@@ -8,12 +8,7 @@ import {
   withAgentResume,
 } from "../agent/index.js";
 import type { SessionStoreData } from "../session/store.js";
-import {
-  clearUser,
-  getChatId,
-  saveSessionStore,
-  setChatId,
-} from "../session/store.js";
+import { getChatId, saveSessionStore, setChatId } from "../session/store.js";
 import { parseSlash } from "../commands/slashParse.js";
 import { baseChatSystemPrompt, periodicAgentInstruction } from "../prompts/index.js";
 import { redactPathsForWx } from "../util/redactPathsForWx.js";
@@ -21,13 +16,17 @@ import { allowedUser } from "../security/gate.js";
 import { extractPeriodicProposal } from "./proposal.js";
 import { handlePeriodicSlash } from "./periodicSlash.js";
 import { handleEnvSlash } from "./envSlash.js";
-import { handleCompileSlash } from "./compileSlash.js";
 import { handleCodeSlash } from "./codeSlash.js";
 import { createLogger } from "../logger.js";
 import { wechatTraceIoEnabled } from "../util/wechatTrace.js";
 import { finalizeWxOutbound, joinWxLines } from "../util/wxRichText.js";
+import { registerAllWizards } from "../wizard/registerAll.js";
+import { handleWizardMessage, startRootWizard } from "../wizard/engine.js";
+import type { WizardHandlerCtx } from "../wizard/types.js";
 
 const log = createLogger("incoming");
+
+registerAllWizards();
 
 export type AppHandlerCtx = {
   bot: WeChatBot;
@@ -78,15 +77,14 @@ function shouldSendAgentFinalReply(
 async function handleHelp(ctx: AppHandlerCtx, msg: IncomingMessage): Promise<void> {
   const body = joinWxLines([
     "/help — 本帮助（简短）",
-    "/周期 help — 周期任务（deliveryMode、简称、/周期 创建）",
+    "/周期 help — 周期任务（含 schedule·CRON 、deliveryMode、简称）",
     "/环境 help — 管理员：远程写入进程环境变量（注入配置文件）",
-    "/reset — 清空本会话 Cursor chatId",
     "/代码 help — 本地/克隆工程、build.sh、产物配置（管理员）",
-    "/编译 <仓库URL> [分支] — 兼容：同 /代码 克隆",
+    "/向导 或 /菜单 — 多步向导（含代码、周期、环境；填参；发「退出」结束）",
     "/测试 — 回复固定句，检查收发通路",
     "WECHAT_TRACE_IO=1 或 LOG_LEVEL=debug — 日志里打印微信收发摘要（脱敏）",
     "WECHAT_TERMINAL_IO=1 — 终端同步打印微信收发（与 INFO [wx-io] 日志格式一致）",
-    "直接发文字 — Agent 对话（非命令）",
+    "未在向导中时，直接发文字 — Agent 对话（非命令）",
   ]);
   await ctx.notify.replyText(msg, body, "help");
 }
@@ -110,16 +108,25 @@ export async function handleIncomingMessage(ctx: AppHandlerCtx, msg: IncomingMes
   const text = msg.text.trim();
   if (!text) return;
 
+  const wizCtx: WizardHandlerCtx = {
+    notify: ctx.notify,
+    agentCfg: ctx.agentCfg,
+    session: ctx.session,
+    sessionPath: ctx.sessionPath,
+  };
+
+  if (await handleWizardMessage(wizCtx, msg, text)) {
+    return;
+  }
+
   const slash = parseSlash(text);
   if (slash) {
-    if (slash.name === "help" || slash.name === "帮助") {
-      await handleHelp(ctx, msg);
+    if (slash.name === "向导" || slash.name === "菜单") {
+      await startRootWizard(wizCtx, msg);
       return;
     }
-    if (slash.name === "reset") {
-      clearUser(ctx.session, msg.userId);
-      saveSessionStore(ctx.session, ctx.sessionPath);
-      await ctx.notify.replyText(msg, "已重置会话", "success");
+    if (slash.name === "help" || slash.name === "帮助") {
+      await handleHelp(ctx, msg);
       return;
     }
     if (slash.name === "环境" || slash.name === "env") {
@@ -132,19 +139,6 @@ export async function handleIncomingMessage(ctx: AppHandlerCtx, msg: IncomingMes
     }
     if (slash.name === "代码" || slash.name === "code") {
       await handleCodeSlash(
-        {
-          notify: ctx.notify,
-          agentCfg: ctx.agentCfg,
-          session: ctx.session,
-          sessionPath: ctx.sessionPath,
-        },
-        msg,
-        slash.rest,
-      );
-      return;
-    }
-    if (slash.name === "编译" || slash.name === "build") {
-      await handleCompileSlash(
         {
           notify: ctx.notify,
           agentCfg: ctx.agentCfg,
@@ -218,7 +212,7 @@ export async function handleIncomingMessage(ctx: AppHandlerCtx, msg: IncomingMes
   if (proposal?.kind) {
     await ctx.notify.replyText(
       msg,
-      "周期任务请用命令创建：/周期 创建 schedule … 或 /周期 创建 trigger …（勿依赖对话末尾 JSON）。发 /周期 help 查看可选参数 [stdout_nonempty|every_run]。",
+      "周期任务请用命令创建：/周期 创建 schedule cron <分> <时> <日> <月> <周> 或 /周期 创建 trigger …（勿依赖对话末尾 JSON）。发 /周期 help 查看可选参数。",
       "info",
     );
   }

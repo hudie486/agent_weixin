@@ -22,7 +22,7 @@ export function periodicAgentInstruction(): string {
   if ((process.env.WX_EMOJI_STYLE ?? "").toLowerCase() === "off") {
     return [
       "若用户要新建定时或触发任务，说明应用斜杠命令创建：",
-      "/周期 创建 schedule <分钟> [stdout_nonempty|every_run] <描述> 或 /周期 创建 trigger …",
+      "/周期 创建 schedule cron <分> <时> <日> <月> <周> [stdout_nonempty|every_run] <描述> 或 /周期 创建 trigger …",
       "可选参数含义见 /周期 help；不要在回复末尾输出 JSON 声称已写入任务库。",
       periodicAgentStructuredHints(),
     ].join("\n");

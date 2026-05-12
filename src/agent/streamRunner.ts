@@ -147,14 +147,9 @@ function extractTextFromStdout(cfg: AgentConfig, out: string): string {
   return out.replaceAll("\r", "").trim();
 }
 
-/** Append hint for short WeChat-friendly replies */
+/** 规范化发给 Agent 的用户提示（本项目仅微信通路，不再追加额外格式说明以免干扰） */
 export function appendWeChatHint(prompt: string): string {
-  const hint =
-    "请在微信场景回复：分多条短句（每条不要太长），适度使用 emoji，少用 Markdown 标题与代码块。";
-  const t = prompt.trimEnd();
-  if (!t) return hint;
-  if (t.includes("微信场景")) return t;
-  return `${t}\n\n${hint}`;
+  return prompt.replace(/\r/g, "").trimEnd();
 }
 
 export type StreamCallbacks = {

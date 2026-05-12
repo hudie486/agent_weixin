@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@wechatbot/wechatbot": "^2.1.1",
+    "cron-parser": "^5.4.0",
     "dotenv": "^16.4.5",
     "undici": "^6.25.0"
   },

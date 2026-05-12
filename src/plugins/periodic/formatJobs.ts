@@ -3,6 +3,7 @@ import { toneLine } from "../../wxTone.js";
 import { joinWxParagraphs } from "../../util/wxRichText.js";
 import type { PeriodicJob } from "./types.js";
 import { isScriptPayload } from "./types.js";
+import { effectiveCronExpression, effectiveCronTimeZone } from "./cronResolve.js";
 import { getJobBriefText, getStoredPromptFromPayload } from "./payload.js";
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
 import { periodicJobRoot } from "./paths.js";
@@ -42,8 +43,21 @@ function listLine1Name(job: PeriodicJob): string {
   return extractBriefTitle(getJobBriefText(job), 16);
 }
 
+/** 向导等场景：任务一行标题（简称或摘要） */
+export function periodicJobPickerLabel(job: PeriodicJob): string {
+  return listLine1Name(job);
+}
+
 /** 微信部分客户端对单行 `\n` 显示不稳定，任务内用双换行分段 */
 const LIST_INNER_SEP = "\n\n";
+
+/**
+ * 微信聊天常把半角星号当作富文本（如加粗）的边界，CRON 里的半角星会被吞或截断（步长写法最明显）。
+ * 出站展示改为全角星号 U+FF0A，语义仍可读；发 /周期 创建 等命令时仍须使用半角星号。
+ */
+function cronExpressionForWeChatPlainText(expr: string): string {
+  return expr.trim().replace(/\*/g, "\uFF0A");
+}
 
 /** `/周期 列表`：固定 emoji 版 — ⏳ 名称 / 🪪 ID / ⏰ 周期与下次执行；有报错再多一段 */
 export function formatJobListCompact(jobs: PeriodicJob[]): string {
@@ -53,13 +67,16 @@ export function formatJobListCompact(jobs: PeriodicJob[]): string {
   const blocks: string[] = [];
   for (const job of jobs) {
     const title = listLine1Name(job);
-    const parts: string[] = [
-      `⏳ ${title}`,
-      `🪪ID：${job.id}`,
-      job.kind === "schedule"
-        ? `⏰每 ${job.intervalMs ? job.intervalMs / 60000 : "?"} 分钟 · 下次执行时间  ${fmtTime(job.nextRunAt)}`
-        : `⏰手动触发 · 发 /周期 运行`,
-    ];
+    const parts: string[] = [`⏳ ${title}`, `🪪ID：${job.id}`];
+    if (job.kind === "schedule") {
+      const ex = effectiveCronExpression(job);
+      const tz = effectiveCronTimeZone(job);
+      const disp = ex?.trim() ? cronExpressionForWeChatPlainText(ex) : "暂缺";
+      parts.push(`⏰CRON「${disp}」`);
+      parts.push(`⏰下次执行时间  ${fmtTime(job.nextRunAt)}`);
+    } else {
+      parts.push(`⏰手动触发 · 发 /周期 运行`);
+    }
     if ((job.lastErrorSummary ?? "").trim()) {
       parts.push(
         `⚠️错误：${redactPathsForWx((job.lastErrorSummary ?? "").trim()).slice(0, 280)}`,
@@ -67,7 +84,11 @@ export function formatJobListCompact(jobs: PeriodicJob[]): string {
     }
     blocks.push(parts.join(LIST_INNER_SEP));
   }
-  return blocks.join(`${LIST_INNER_SEP}\n————————————\n${LIST_INNER_SEP}`);
+  let out = blocks.join(`${LIST_INNER_SEP}\n————————————\n${LIST_INNER_SEP}`);
+  if (jobs.some((j) => j.kind === "schedule")) {
+    out += `${LIST_INNER_SEP}ℹ️说明：发命令或填向导时请仍用半角星号。`;  
+  }
+  return out;
 }
 
 export type JobDetailOptions = {
@@ -117,9 +138,12 @@ export function formatJobDetail(job: PeriodicJob, index: number, opts?: JobDetai
   }
 
   if (job.kind === "schedule") {
-    lines.push(
-      toneLine("info", index * 4 + 3, `间隔：${job.intervalMs ? job.intervalMs / 60000 : "?"} 分钟`),
-    );
+    const ex = effectiveCronExpression(job);
+    const tz = effectiveCronTimeZone(job);
+    const cronPart = ex?.trim()
+      ? `CRON：${cronExpressionForWeChatPlainText(ex.trim())} · 时区：${tz}（五段依次为：分 时 日 月 周；全角＊仅防微信误解析）`
+      : "CRON：暂缺（尚无有效表达式）";
+    lines.push(toneLine("info", index * 4 + 3, cronPart));
     lines.push(toneLine("periodic", index * 4 + 4, `下次运行：${fmtTime(job.nextRunAt)}`));
     const missed = job.missedTicksEstimate ?? 0;
     if (missed > 0) {

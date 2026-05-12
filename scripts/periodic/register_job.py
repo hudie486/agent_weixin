@@ -8,8 +8,80 @@ import os
 import sys
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from zoneinfo import ZoneInfo
+
+try:
+    from croniter import croniter as _croniter_cls
+except ImportError:
+    _croniter_cls = None  # type: ignore[misc, assignment]
+
+
+def _require_croniter() -> None:
+    if _croniter_cls is None:
+        raise RuntimeError("请安装 croniter：pip install -r scripts/periodic/requirements.txt")
+
+
+def cron_tz_name(j: dict[str, Any]) -> str:
+    return str(j.get("cronTimeZone") or "Asia/Shanghai").strip() or "Asia/Shanghai"
+
+
+def next_cron_run_ms(expr: str, tz_name: str, after_ms: int) -> int:
+    """严格晚于 after_ms 的下一触发时刻（毫秒 epoch）。"""
+    _require_croniter()
+    tz = ZoneInfo(tz_name)
+    base = datetime.fromtimestamp(after_ms / 1000.0, tz=tz)
+    it = _croniter_cls(expr, base)  # type: ignore[misc]
+    nxt: datetime = it.get_next(datetime)
+    if nxt.tzinfo is None:
+        nxt = nxt.replace(tzinfo=tz)
+    return int(nxt.timestamp() * 1000)
+
+
+def migrate_schedule_job_cron(j: dict[str, Any]) -> None:
+    """无 cronExpression 的旧 schedule 任务：推导 CRON 并写入（供 bump / 启用 等路径）。"""
+    if j.get("kind") != "schedule":
+        return
+    if j.get("cronExpression"):
+        return
+    sm = str(j.get("scheduleMode") or "").lower()
+    expr: str | None = None
+    if sm == "daily" and isinstance(j.get("dailyShanghai"), dict):
+        ds = j["dailyShanghai"]
+        try:
+            h = int(ds.get("hour"))
+            mi = int(ds.get("minute"))
+        except (TypeError, ValueError):
+            h, mi = 0, 0
+        if 0 <= h <= 23 and 0 <= mi <= 59:
+            expr = f"{mi} {h} * * *"
+    if expr is None and j.get("intervalMs"):
+        try:
+            m = max(1, int(j["intervalMs"]) // 60000)
+        except (TypeError, ValueError):
+            m = 15
+        if 1 <= m <= 59:
+            expr = f"*/{m} * * * *"
+        elif m == 60:
+            expr = "0 * * * *"
+        elif m == 1440:
+            expr = "0 0 * * *"
+        elif m % 60 == 0 and m < 1440:
+            h = m // 60
+            if 1 <= h <= 23:
+                expr = f"0 */{h} * * *"
+        if expr is None:
+            expr = "0 * * * *"
+    if expr is None:
+        expr = "0 * * * *"
+    j["cronExpression"] = expr
+    if not j.get("cronTimeZone"):
+        j["cronTimeZone"] = "Asia/Shanghai"
+    if not j.get("intervalMs"):
+        j["intervalMs"] = 60000
 
 
 def sanitize_str(s: str) -> str:
@@ -81,18 +153,26 @@ def cmd_add(args: argparse.Namespace) -> None:
         sys.exit(3)
     interval_ms = None
     next_run = None
+    cron_expression: str | None = None
+    cron_tz = "Asia/Shanghai"
     if kind == "schedule":
-        minutes = payload.get("intervalMinutes")
+        cx = str(payload.get("cronExpression") or "").strip()
+        if not cx:
+            print(
+                "cronExpression required for schedule (5 fields: minute hour day month weekday)",
+                file=sys.stderr,
+            )
+            sys.exit(3)
+        cron_tz = str(payload.get("cronTimeZone") or "Asia/Shanghai").strip() or "Asia/Shanghai"
+        now_ms = int(time.time() * 1000)
         try:
-            m = int(minutes)
-        except (TypeError, ValueError):
-            print("intervalMinutes required for schedule", file=sys.stderr)
+            next_run = next_cron_run_ms(cx, cron_tz, now_ms)
+        except Exception as e:
+            print(f"invalid cronExpression: {e}", file=sys.stderr)
             sys.exit(3)
-        if m < 1:
-            print("intervalMinutes must be >= 1", file=sys.stderr)
-            sys.exit(3)
-        interval_ms = m * 60 * 1000
-        next_run = int(time.time() * 1000) + interval_ms
+        cron_expression = cx
+        gap = max(60_000, min(86_400_000, next_run - now_ms))
+        interval_ms = gap
     user_prompt = sanitize_str(
         str(payload.get("userPrompt") or payload.get("prompt") or "").strip()
     )
@@ -148,6 +228,9 @@ def cmd_add(args: argparse.Namespace) -> None:
         job["generationStatus"] = gen_st
     if short_sn:
         job["shortName"] = short_sn
+    if kind == "schedule" and cron_expression is not None:
+        job["cronExpression"] = cron_expression
+        job["cronTimeZone"] = cron_tz
     jobs.append(job)
     save_atomic(p, data)
     print_json_stdout({"ok": True, "job": job})
@@ -163,7 +246,18 @@ def cmd_remove(args: argparse.Namespace) -> None:
     print_json_stdout({"ok": True})
 
 
-_PATCH_KEYS = frozenset({"generationStatus", "payload", "agentChatId", "userPrompt", "enabled", "shortName"})
+_PATCH_KEYS = frozenset(
+    {
+        "generationStatus",
+        "payload",
+        "agentChatId",
+        "userPrompt",
+        "enabled",
+        "shortName",
+        "cronExpression",
+        "cronTimeZone",
+    }
+)
 
 
 def cmd_patch_job(args: argparse.Namespace) -> None:
@@ -203,6 +297,29 @@ def cmd_patch_job(args: argparse.Namespace) -> None:
                 continue
             if k == "shortName":
                 j["shortName"] = sanitize_str(str(v or "").strip()) or None
+                continue
+            if k == "cronExpression" and j.get("kind") == "schedule":
+                ex = sanitize_str(str(v or "").strip())
+                if not ex:
+                    continue
+                try:
+                    nr = next_cron_run_ms(ex, cron_tz_name(j), int(time.time() * 1000))
+                except Exception:
+                    continue
+                j["cronExpression"] = ex
+                j["nextRunAt"] = nr
+                gap = max(60_000, min(86_400_000, nr - int(time.time() * 1000)))
+                j["intervalMs"] = gap
+                continue
+            if k == "cronTimeZone" and j.get("kind") == "schedule":
+                tz = sanitize_str(str(v or "").strip()) or "Asia/Shanghai"
+                j["cronTimeZone"] = tz
+                ex = str(j.get("cronExpression") or "")
+                if ex:
+                    try:
+                        j["nextRunAt"] = next_cron_run_ms(ex, tz, int(time.time() * 1000))
+                    except Exception:
+                        pass
                 continue
         save_atomic(p, data)
         print_json_stdout({"ok": True, "job": j})
@@ -249,10 +366,11 @@ def cmd_bump_next(args: argparse.Namespace) -> None:
         if j.get("kind") != "schedule":
             print("not a schedule job", file=sys.stderr)
             sys.exit(6)
-        iv = int(j.get("intervalMs") or 0)
-        if iv < 1:
+        migrate_schedule_job_cron(j)
+        ex = str(j.get("cronExpression") or "")
+        if not ex:
             sys.exit(5)
-        j["nextRunAt"] = now + iv
+        j["nextRunAt"] = next_cron_run_ms(ex, cron_tz_name(j), now)
         save_atomic(p, data)
         print_json_stdout({"ok": True})
         return
@@ -286,8 +404,14 @@ def cmd_set_enabled(args: argparse.Namespace) -> None:
         if str(j.get("id")) == jid:
             j["enabled"] = bool(en)
             found = True
-            if en and j.get("kind") == "schedule" and j.get("intervalMs"):
-                j["nextRunAt"] = now + int(j["intervalMs"])
+            if en and j.get("kind") == "schedule":
+                migrate_schedule_job_cron(j)
+                ex = str(j.get("cronExpression") or "")
+                if ex:
+                    try:
+                        j["nextRunAt"] = next_cron_run_ms(ex, cron_tz_name(j), now)
+                    except Exception:
+                        pass
     if not found:
         print("job not found", file=sys.stderr)
         sys.exit(4)

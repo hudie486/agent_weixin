@@ -697,6 +697,5 @@ function codeHelpText(): string {
     "/代码 修复 [别名] <描述> — 无脚本仅 Agent；有脚本则修复后自动构建并发产物",
     "",
     "安全：CODE_PROJECT_ROOT_ALLOWLIST 可限制本地路径；SSH 需本机已配置密钥",
-    "旧命令 /编译 已指向 /代码 克隆",
   ]);
 }
