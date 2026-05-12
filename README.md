@@ -1,6 +1,6 @@
 # wechat-agent-bot
 
-基于 [wechatbot / iLink](https://www.npmjs.com/package/@wechatbot/wechatbot) 的微信私聊机器人：将消息交给本机 **Cursor Agent**（`agent` CLI）流式回复，并带有**周期 Python 脚本任务**、**环境变量远程注入**、**仓库拉取编译**、**Steam 好友状态监控**等扩展能力。
+基于 [wechatbot / iLink](https://www.npmjs.com/package/@wechatbot/wechatbot) 的微信私聊机器人：将消息交给本机 **Cursor Agent**（`agent` CLI）流式回复，并带有**按 CRON（上海时区）调度的周期 Python 脚本任务**、**环境变量远程注入**、**仓库拉取编译**、**Steam 好友状态监控**等扩展能力。
 
 - **运行环境**：Node.js **≥ 22**
 - **配置入口**：项目根目录 `.env`（可参考 [`.env.example`](./.env.example)）
@@ -9,10 +9,13 @@
 
 ```bash
 npm install
+pip install -r scripts/periodic/requirements.txt
 cp .env.example .env
 # 编辑 .env：至少配置微信侧存储目录、允许的用户、Agent 命令等
 npm run dev
 ```
+
+> **周期任务**：Node 会调用 `scripts/periodic/register_job.py` 读写状态；**croniter** 用于计算下次触发，请务必执行上一行的 `pip install`（CI / 新机器亦同）。
 
 开发模式下 `npm run dev` 会默认打开 `WECHAT_TERMINAL_IO=1`（在 `main.ts` 中按 `npm_lifecycle_event=dev` 自动设置，可用 `WECHAT_TERMINAL_IO=0` 关闭），终端会按 `INFO  [wx-io]` 格式打印收发的脱敏摘要。
 
@@ -20,6 +23,7 @@ npm run dev
 
 ```bash
 npm run build
+pip install -r scripts/periodic/requirements.txt
 npm start
 ```
 
@@ -32,7 +36,7 @@ npm start
 | 用户白名单 | `ALLOWED_USER_IDS` 非空时仅列表内 `userId` 可用；空则不限 |
 | 管理员 | `ADMIN_USER_IDS` 中用户可使用需管理员权限的指令（环境注入、周期任务增删改、编译等） |
 | 会话续聊 | 默认 `CHAT_SESSION_ENABLE=1` 时，为每用户维护 Cursor `chatId`（`--resume`） |
-| 周期任务 | 由 Python 写 `PERIODIC_STATE_PATH`，作业目录在 `PERIODIC_JOB_ROOT/<任务ID>`，入口默认 `run.py` |
+| 周期任务 | 由 Python 写 `PERIODIC_STATE_PATH`；**schedule** 使用 **5 段 CRON**（`Asia/Shanghai`），作业目录在 `PERIODIC_JOB_ROOT/<任务ID>`，入口默认 `run.py` |
 | 环境注入 | `/环境 set` 写入 JSON 并 `merge` 到当前进程，供脚本与 Agent 读取 `process.env` |
 | 多轮向导 | `/向导` 或 `/菜单` 进入；含**代码**、**周期**、**环境**子向导；向导内纯文本填参，发「退出」结束 |
 
@@ -43,9 +47,9 @@ npm start
 | `/help` | 简短帮助 |
 | `/向导` / `/菜单` | 多步向导：代码 / 周期 / 环境（管理员）；向导内纯文本，发「退出」结束 |
 | `/周期 help` | 周期任务详细说明 |
-| `/周期 列表` | 任务列表（多行、段间双换行） |
+| `/周期 列表` | 任务列表；定时任务为 **CRON 与时区分一行、下次执行时间单独一行**；CRON 中星号为 **全角＊**（防微信把半角 `*` 当富文本吞字），发命令时仍用半角 |
 | `/周期 详情 <ID> [路径]` | 任务详情；加 `路径` 或 `path` 才显示本机作业目录 |
-| `/周期 创建 schedule …` / `trigger …` | 创建脚本任务（可带 `简称`、deliveryMode） |
+| `/周期 创建 schedule cron <分> <时> <日> <月> <周> …` / `trigger …` | 创建脚本任务（五段 CRON 与 Linux crontab 一致，上海时区；可带 `简称`、deliveryMode）；详见 `/周期 help` |
 | `/周期 修改 / 删除 / 启用 / 停用 / 运行` | 见 `/周期 help` |
 | `/环境 help` / `list` / `set` / `delete` | 远程环境变量（管理员） |
 | `/代码 help` | 项目登记、build.sh、产物配置、拉取/修复/编译（管理员）；HTTPS 克隆用 `/代码 克隆` |
@@ -60,6 +64,7 @@ npm start
 - **`joinWxParagraphs`**：段与段之间使用 **`\n\n`**（如 `/周期 详情` 的 `formatJobDetail`）
 - **`joinWxLines`**：与 `/环境 help` 相同，每行末尾补 `\n` 后再用 `\n` 拼接
 - **`notify/channel`**：对 `replyText` / `replyPlain` / `send` 的文本在发出前做 **`finalizeWxOutbound`**，并令 `formatOutboundLines` 生成的多行 tone 行之间为 **`\n\n`**
+- **`/周期 列表` 中的 CRON**：出站将半角 `*` 换为全角 `＊`，避免微信客户端误解析；复制到命令行前请改回半角星号
 
 ## 网络与代理（`Poll error` / `fetch failed`）
 
@@ -109,8 +114,10 @@ npm start
 | `npm run build` | `tsc` 编译到 `dist/` |
 | `npm start` | 运行 `node dist/main.js` |
 | `npm test` | Vitest |
+| `pip install -r scripts/periodic/requirements.txt` | 周期任务状态脚本依赖 **croniter**（与 `npm test` 中 Python 用例一致；生产环境亦需） |
 
 ## 许可与依赖
 
 - 业务代码以项目内 `package.json` 与许可证为准（若未单独声明，请自行补充）。
 - 核心通信依赖 `@wechatbot/wechatbot`，Agent 侧依赖本机已安装的 Cursor **`agent`/`cursor-agent`** 可执行环境。
+- 周期状态脚本依赖 Python **croniter**（见 `scripts/periodic/requirements.txt`）；Node 侧 CRON 校验使用 **`cron-parser`**（随 `npm install` 安装）。
