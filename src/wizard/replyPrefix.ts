@@ -19,10 +19,12 @@ export function withWizardReplyPrefix(text: string): string {
 export function wrapNotifyForWizard(notify: NotifyChannel): NotifyChannel {
   return {
     resetSeq: () => notify.resetSeq(),
-    replyText: (msg, text, intent) => notify.replyText(msg, withWizardReplyPrefix(text), intent),
+    // 向导内避免 tone emoji 与 🧭 前缀叠加，统一按 plain 输出。
+    replyText: (msg, text, _intent) => notify.replyPlain(msg, withWizardReplyPrefix(text)),
     replyPlain: (msg, text) => notify.replyPlain(msg, withWizardReplyPrefix(text)),
-    notifyText: (p) => notify.notifyText({ ...p, text: withWizardReplyPrefix(p.text) }),
-    sendText: (userId, text, intent) => notify.sendText(userId, withWizardReplyPrefix(text), intent),
+    notifyText: (p) => notify.notifyText({ ...p, text: withWizardReplyPrefix(p.text), plain: true }),
+    sendText: (userId, text, _intent) =>
+      notify.notifyText({ userId, text: withWizardReplyPrefix(text), plain: true }),
     sendFile: (userId, buf, fileName, caption) =>
       notify.sendFile(
         userId,
