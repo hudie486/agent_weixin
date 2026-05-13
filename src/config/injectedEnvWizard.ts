@@ -1,10 +1,11 @@
 /**
- * 注入环境变量域（injected-env.json）：向导仅对接 handleEnvSlash。
+ * 注入环境变量域（injected-env.json）：向导仅对接环境模块统一入口。
  * 勿在此 import 代码项目、周期任务等其它业务包。
  */
-import type { MenuOptionDef, WizardDef } from "../wizard/types.js";
+import type { IncomingMessage } from "@wechatbot/wechatbot";
+import type { MenuOptionDef, WizardCollected, WizardDef } from "../wizard/types.js";
 import { registerWizard } from "../wizard/registry.js";
-import { handleEnvSlash } from "../handler/envSlash.js";
+import { dispatchWizardCommandWithDefaults } from "../framework/wizard/adapters.js";
 import { readInjectedEnv } from "./injectedEnv.js";
 
 function validateEnvKeyFormat(s: string): string | null {
@@ -28,6 +29,35 @@ function validateEnvVal(s: string): string | null {
   return null;
 }
 
+function buildEnvTerminalSub({
+  collected,
+}: {
+  collected: WizardCollected;
+  msg: IncomingMessage;
+}): string | undefined {
+  const flow = collected._flow;
+  if (flow === "help") return "help";
+  if (flow === "list") return "list";
+  if (flow === "set") {
+    const k = collected.envKey?.trim() ?? "";
+    const v = collected.envVal ?? "";
+    if (!k || !v.trim()) return undefined;
+    return `set ${k} ${v}`;
+  }
+  if (flow === "delete") {
+    const k = collected.delKey?.trim() ?? "";
+    if (!k) return undefined;
+    return `delete ${k}`;
+  }
+  if (flow === "modify") {
+    const k = collected.modEnvKey?.trim() ?? "";
+    const v = collected.modEnvVal ?? "";
+    if (!k || !v.trim()) return undefined;
+    return `set ${k} ${v}`;
+  }
+  return undefined;
+}
+
 /** 向全局向导表注册「注入环境变量」向导（wizardId 固定为 env） */
 export function registerInjectedEnvWizard(): void {
   const def: WizardDef = {
@@ -35,6 +65,8 @@ export function registerInjectedEnvWizard(): void {
     title: "注入环境变量（帮助、列表、新增、修改、删除）",
     requireAdmin: true,
     rootStepId: "env_main",
+    commandDomain: "env",
+    buildTerminalSub: buildEnvTerminalSub,
     steps: {
       env_main: {
         kind: "menu",
@@ -169,33 +201,16 @@ export function registerInjectedEnvWizard(): void {
       env_term: { kind: "terminal" },
     },
     onTerminal: async ({ ctx, msg, collected }) => {
-      const flow = collected._flow;
-      if (flow === "help") {
-        await handleEnvSlash(ctx.notify, msg, "help");
+      const sub = buildEnvTerminalSub({ collected, msg });
+      if (!sub) {
+        await ctx.notify.replyText(msg, "向导数据不完整，无法生成命令。", "error");
         return;
       }
-      if (flow === "list") {
-        await handleEnvSlash(ctx.notify, msg, "list");
-        return;
+      const ok = await dispatchWizardCommandWithDefaults({ ctx, msg, domain: "env", sub });
+      if (!ok) {
+        await ctx.notify.replyText(msg, `命令未注册：${sub}`, "error");
       }
-      if (flow === "set") {
-        const k = collected.envKey?.trim() ?? "";
-        const v = collected.envVal ?? "";
-        await handleEnvSlash(ctx.notify, msg, `set ${k} ${v}`);
-        return;
-      }
-      if (flow === "delete") {
-        const k = collected.delKey?.trim() ?? "";
-        await handleEnvSlash(ctx.notify, msg, `delete ${k}`);
-        return;
-      }
-      if (flow === "modify") {
-        const k = collected.modEnvKey?.trim() ?? "";
-        const v = collected.modEnvVal ?? "";
-        await handleEnvSlash(ctx.notify, msg, `set ${k} ${v}`);
-        return;
-      }
-      await ctx.notify.replyText(msg, "向导内部错误：未知环境操作。", "error");
+      return;
     },
   };
   registerWizard(def);

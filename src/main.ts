@@ -6,9 +6,9 @@ import { createNotifyChannel } from "./notify/channel.js";
 import { createPerKeyQueue } from "./tasks/perUserQueue.js";
 import { loadSessionStore, saveSessionStore } from "./session/store.js";
 import path from "node:path";
-import { dispatchWechatMessage } from "./dispatch/dispatch.js";
+import { handleIncomingMessage } from "./handler/incoming.js";
 import { parseSlash } from "./commands/slashParse.js";
-import { startPeriodicScheduler } from "./plugins/periodic/sched.js";
+import { startPeriodicModuleScheduler } from "./modules/periodic/module.js";
 import { startSteamFriendsMonitor } from "./plugins/steam/friendsMonitor.js";
 import { createLogger, redactSecrets } from "./logger.js";
 import { wechatTraceIoEnabled, terminalWechatIoEnabled } from "./util/wechatTrace.js";
@@ -131,7 +131,7 @@ async function bootstrap(): Promise<void> {
     sessionPath: sessionPath(),
   };
 
-  startPeriodicScheduler({ agentCfg, queue, notify });
+  startPeriodicModuleScheduler({ agentCfg, queue, notify });
   startSteamFriendsMonitor({ notify });
 
   bot.onMessage((msg) => {
@@ -146,7 +146,7 @@ async function bootstrap(): Promise<void> {
     const runHandler = async (): Promise<void> => {
       try {
         await bot.sendTyping(msg.userId);
-        await dispatchWechatMessage(ctx, msg);
+        await handleIncomingMessage(ctx, msg);
       } catch (e) {
         log.error("handle message", e);
         try {

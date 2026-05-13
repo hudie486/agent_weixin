@@ -4,6 +4,34 @@ import { withWizardReplyPrefix } from "../src/wizard/replyPrefix.js";
 import { toWizardKeycapIndex } from "../src/wizard/formatMenu.js";
 import { isPendingExpired } from "../src/wizard/stateStore.js";
 import type { WizardPending } from "../src/wizard/types.js";
+import { tryRoutedSlash } from "../src/wizard/slashCatalog.js";
+import { parseSlash } from "../src/commands/slashParse.js";
+import { resolveCodeAction } from "../src/modules/code/keywords.js";
+
+import { formatWizardExecPreview } from "../src/wizard/terminalPreview.js";
+
+describe("formatWizardExecPreview", () => {
+  it("formats code domain line without info prefix", () => {
+    expect(formatWizardExecPreview("code", "编译 pre")).toBe("📌执行 ： /代码 编译 pre");
+  });
+});
+
+describe("tryRoutedSlash", () => {
+  it("maps 代码 root to code domain", () => {
+    const s = parseSlash("/代码 编译 pre")!;
+    expect(tryRoutedSlash(s)).toEqual({ domain: "code", sub: "编译 pre" });
+  });
+  it("maps periodic roots", () => {
+    expect(tryRoutedSlash(parseSlash("/周期 列表")!)).toEqual({ domain: "periodic", sub: "列表" });
+  });
+});
+
+describe("resolveCodeAction", () => {
+  it("resolves compile action token", () => {
+    expect(resolveCodeAction("compile pre")).toEqual({ action: "compile", rest: "pre" });
+    expect(resolveCodeAction("build pre")).toBeNull();
+  });
+});
 
 describe("parseMenuChoice", () => {
   it("parses single digit index", () => {

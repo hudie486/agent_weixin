@@ -3,7 +3,7 @@ import { toneLine } from "../../wxTone.js";
 import { joinWxParagraphs } from "../../util/wxRichText.js";
 import type { PeriodicJob } from "./types.js";
 import { isScriptPayload } from "./types.js";
-import { effectiveCronExpression, effectiveCronTimeZone } from "./cronResolve.js";
+import { effectiveCronExpression } from "../../modules/periodic/cron.js";
 import { getJobBriefText, getStoredPromptFromPayload } from "./payload.js";
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
 import { periodicJobRoot } from "./paths.js";
@@ -70,7 +70,6 @@ export function formatJobListCompact(jobs: PeriodicJob[]): string {
     const parts: string[] = [`⏳ ${title}`, `🪪ID：${job.id}`];
     if (job.kind === "schedule") {
       const ex = effectiveCronExpression(job);
-      const tz = effectiveCronTimeZone(job);
       const disp = ex?.trim() ? cronExpressionForWeChatPlainText(ex) : "暂缺";
       parts.push(`⏰CRON「${disp}」`);
       parts.push(`⏰下次执行时间  ${fmtTime(job.nextRunAt)}`);
@@ -139,9 +138,8 @@ export function formatJobDetail(job: PeriodicJob, index: number, opts?: JobDetai
 
   if (job.kind === "schedule") {
     const ex = effectiveCronExpression(job);
-    const tz = effectiveCronTimeZone(job);
     const cronPart = ex?.trim()
-      ? `CRON：${cronExpressionForWeChatPlainText(ex.trim())} · 时区：${tz}（五段依次为：分 时 日 月 周；全角＊仅防微信误解析）`
+      ? `CRON：${cronExpressionForWeChatPlainText(ex.trim())}（五段依次为：分 时 日 月 周；全角＊仅防微信误解析）`
       : "CRON：暂缺（尚无有效表达式）";
     lines.push(toneLine("info", index * 4 + 3, cronPart));
     lines.push(toneLine("periodic", index * 4 + 4, `下次运行：${fmtTime(job.nextRunAt)}`));

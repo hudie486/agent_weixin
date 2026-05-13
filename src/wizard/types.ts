@@ -7,6 +7,8 @@ import type { SessionStoreData } from "../session/store.js";
  * 新功能接入向导：在**该功能所属目录**下新增 `wizardRegistration.ts`（或等价命名），
  * 仅依赖 `wizard/types`、`wizard/registry` 与本域 handler/服务；**不要**在业务域之间互相 import。
  * 最后在 `src/wizard/registerAll.ts` 中增加一次注册函数调用即可出现在 `/向导` 根菜单。
+ * 若向导 terminal 需展示「拟执行」斜杠：在 `WizardDef` 上设置 `commandDomain` 与 `buildTerminalSub`；
+ * 引擎会在执行 `onTerminal` 之前用 `wizard/terminalPreview.formatWizardExecPreview` 发一行（不经 ℹ️ 等意图前缀）。
  */
 
 /** 与斜杠 handler 共用的上下文 */
@@ -70,6 +72,8 @@ export type WizardTerminalStep = {
 
 export type WizardStep = WizardMenuStep | WizardDynamicMenuStep | WizardFreeTextStep | WizardTerminalStep;
 
+export type WizardCommandDomain = "code" | "periodic" | "env";
+
 export type WizardTerminalFn = (args: {
   ctx: WizardHandlerCtx;
   msg: IncomingMessage;
@@ -84,6 +88,16 @@ export type WizardDef = {
   rootStepId: string;
   steps: Record<string, WizardStep>;
   onTerminal: WizardTerminalFn;
+  /** 与 `slashCatalog.slashFullLine` 配合，用于 terminal 执行前展示「📌执行」行 */
+  commandDomain?: WizardCommandDomain;
+  /**
+   * 由 collected（及 msg）推导与直发斜杠一致的 sub（无副作用）；返回空则不在执行前展示预览行。
+   * 应与 `onTerminal` 内实际调用的 handler 载荷一致。
+   */
+  buildTerminalSub?: (args: {
+    collected: WizardCollected;
+    msg: IncomingMessage;
+  }) => string | undefined | Promise<string | undefined>;
 };
 
 export type WizardPending = {

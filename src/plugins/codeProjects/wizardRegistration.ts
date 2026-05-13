@@ -1,10 +1,11 @@
 /**
- * 代码项目域：仅在本文件内组合「向导 UI」与「/代码 斜杠入口」。
+ * 代码项目域：仅在本文件内组合「向导 UI」与「代码模块统一入口」。
  * 勿在此 import 周期、环境等其它业务包。
  */
-import type { MenuOptionDef, WizardDef } from "../../wizard/types.js";
+import type { IncomingMessage } from "@wechatbot/wechatbot";
+import type { MenuOptionDef, WizardCollected, WizardDef } from "../../wizard/types.js";
 import { registerWizard } from "../../wizard/registry.js";
-import { handleCodeSlash } from "../../handler/codeSlash.js";
+import { dispatchWizardCommandWithDefaults } from "../../framework/wizard/adapters.js";
 import { loadCodeProjectsState, listUserProjects } from "./store.js";
 
 const ALIAS_RE = /^[\w\u4e00-\u9fff-]{1,32}$/;
@@ -25,6 +26,40 @@ function validateGlob(s: string): string | null {
   return null;
 }
 
+function buildCodeTerminalSub({
+  collected,
+}: {
+  collected: WizardCollected;
+  msg: IncomingMessage;
+}): string | undefined {
+  const flow = collected._flow;
+  if (flow === "list") return "list";
+  if (flow === "add") {
+    const al = collected.alias?.trim() ?? "";
+    const p = collected.path?.trim() ?? "";
+    if (!al || !p) return undefined;
+    return `add ${al} ${p}`;
+  }
+  const al = collected.codeAlias?.trim() ?? "";
+  if (flow === "compile_project") return al ? `compile ${al}` : undefined;
+  if (flow === "view_project") return al ? `config ${al}` : undefined;
+  if (flow === "param_glob") {
+    if (!al) return undefined;
+    const g = collected.editGlob?.trim() ?? "";
+    if (!g) return undefined;
+    return `config ${al} 产物 ${g}`;
+  }
+  if (flow === "param_name") {
+    if (!al) return undefined;
+    const n = collected.editSendName?.trim() ?? "";
+    if (!n) return undefined;
+    return `config ${al} 产物名 ${n}`;
+  }
+  if (flow === "param_clearglob") return al ? `config ${al} 清除 产物` : undefined;
+  if (flow === "param_default") return al ? `default ${al}` : undefined;
+  return undefined;
+}
+
 /** 向全局向导表注册「代码项目」向导（wizardId 固定为 code，勿与其它域冲突） */
 export function registerCodeProjectsWizard(): void {
   const def: WizardDef = {
@@ -32,6 +67,8 @@ export function registerCodeProjectsWizard(): void {
     title: "代码项目（添加、选择项目后编译与配置）",
     requireAdmin: true,
     rootStepId: "code_menu",
+    commandDomain: "code",
+    buildTerminalSub: buildCodeTerminalSub,
     steps: {
       code_menu: {
         kind: "menu",
@@ -217,67 +254,16 @@ export function registerCodeProjectsWizard(): void {
       code_term: { kind: "terminal" },
     },
     onTerminal: async ({ ctx, msg, collected }) => {
-      const flow = collected._flow;
-      if (flow === "list") {
-        await handleCodeSlash(ctx, msg, "列表");
+      const sub = buildCodeTerminalSub({ collected, msg });
+      if (!sub) {
+        await ctx.notify.replyText(msg, "向导数据不完整，无法生成命令。", "error");
         return;
       }
-      if (flow === "add") {
-        await handleCodeSlash(ctx, msg, `添加 ${collected.alias} ${collected.path}`);
-        return;
+      const ok = await dispatchWizardCommandWithDefaults({ ctx, msg, domain: "code", sub });
+      if (!ok) {
+        await ctx.notify.replyText(msg, `命令未注册：${sub}`, "error");
       }
-      const al = collected.codeAlias?.trim() ?? "";
-      if (flow === "compile_project") {
-        if (!al) {
-          await ctx.notify.replyText(msg, "向导数据缺失：未选择项目别名。", "error");
-          return;
-        }
-        await handleCodeSlash(ctx, msg, `编译 ${al}`);
-        return;
-      }
-      if (flow === "view_project") {
-        if (!al) {
-          await ctx.notify.replyText(msg, "向导数据缺失：未选择项目别名。", "error");
-          return;
-        }
-        await handleCodeSlash(ctx, msg, `配置 ${al}`);
-        return;
-      }
-      if (flow === "param_glob") {
-        if (!al) {
-          await ctx.notify.replyText(msg, "向导数据缺失：未选择项目别名。", "error");
-          return;
-        }
-        const g = collected.editGlob?.trim() ?? "";
-        await handleCodeSlash(ctx, msg, `配置 ${al} 产物 ${g}`);
-        return;
-      }
-      if (flow === "param_name") {
-        if (!al) {
-          await ctx.notify.replyText(msg, "向导数据缺失：未选择项目别名。", "error");
-          return;
-        }
-        const n = collected.editSendName?.trim() ?? "";
-        await handleCodeSlash(ctx, msg, `配置 ${al} 产物名 ${n}`);
-        return;
-      }
-      if (flow === "param_clearglob") {
-        if (!al) {
-          await ctx.notify.replyText(msg, "向导数据缺失：未选择项目别名。", "error");
-          return;
-        }
-        await handleCodeSlash(ctx, msg, `配置 ${al} 清除 产物`);
-        return;
-      }
-      if (flow === "param_default") {
-        if (!al) {
-          await ctx.notify.replyText(msg, "向导数据缺失：未选择项目别名。", "error");
-          return;
-        }
-        await handleCodeSlash(ctx, msg, `默认 ${al}`);
-        return;
-      }
-      await ctx.notify.replyText(msg, "向导内部错误：未知操作类型。", "error");
+      return;
     },
   };
   registerWizard(def);

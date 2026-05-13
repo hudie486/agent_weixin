@@ -1,10 +1,11 @@
 /**
- * 周期任务域：向导步骤与 terminal 仅对接本域的 handlePeriodicSlash。
+ * 周期任务域：向导步骤与 terminal 仅对接本域统一模块入口。
  * 勿在此 import 代码项目、环境注入等其它业务包。
  */
-import type { MenuOptionDef, WizardDef } from "../../wizard/types.js";
+import type { IncomingMessage } from "@wechatbot/wechatbot";
+import type { MenuOptionDef, WizardCollected, WizardDef } from "../../wizard/types.js";
 import { registerWizard } from "../../wizard/registry.js";
-import { handlePeriodicSlash } from "../../handler/periodicSlash.js";
+import { dispatchWizardCommandWithDefaults } from "../../framework/wizard/adapters.js";
 import { listJobsState } from "./ops.js";
 import type { PeriodicJob } from "./types.js";
 import { isScriptPayload } from "./types.js";
@@ -14,12 +15,7 @@ import {
   validateCronExpressionFive,
   wizardCronHintLines,
   effectiveCronExpression,
-} from "./cronResolve.js";
-import {
-  patchPeriodicCronExpression,
-  patchPeriodicDeliveryMode,
-  patchPeriodicShortName,
-} from "./paramApply.js";
+} from "../../modules/periodic/cron.js";
 
 function validateShortName(s: string): string | null {
   const t = s.trim().replace(/[/\\:*?"<>|]/g, "").slice(0, 24);
@@ -50,6 +46,65 @@ async function resolveUserPeriodicJob(uid: string, idOrPrefix: string): Promise<
   return st.jobs.find((j) => j.notifyUserId === uid && (j.id === idOrPrefix || j.id.startsWith(idOrPrefix)));
 }
 
+async function buildPeriodicTerminalSub({
+  collected,
+  msg,
+}: {
+  collected: WizardCollected;
+  msg: IncomingMessage;
+}): Promise<string | undefined> {
+  const flow = collected._flow;
+  if (flow === "list") return "list";
+  if (flow === "help") return "help";
+  const delivery = collected.delivery ?? "stdout_nonempty";
+  const desc = collected.desc?.trim() ?? "";
+  const sn = collected.shortName?.trim();
+  if (flow === "schedule") {
+    const cronRaw = collected.schedCron?.trim() ?? "";
+    const err = validateCronExpressionFive(cronRaw, PERIODIC_CRON_TZ);
+    if (err) return undefined;
+    const cronNorm = cronRaw.replace(/\s+/g, " ");
+    let sub = `create schedule cron ${cronNorm}`;
+    if (sn) sub += ` short ${sn}`;
+    sub += ` ${delivery} ${desc}`;
+    return sub;
+  }
+  if (flow === "trigger") {
+    let sub = "create trigger";
+    if (sn) sub += ` short ${sn}`;
+    sub += ` ${delivery} ${desc}`;
+    return sub;
+  }
+  if (flow === "modify") {
+    const jidRaw = collected.modJobId?.trim() ?? "";
+    if (!jidRaw) return undefined;
+    const job = await resolveUserPeriodicJob(msg.userId, jidRaw);
+    if (!job) return undefined;
+    const kind = collected._modParamKind?.trim() ?? "";
+    if (kind === "cron") {
+      const raw = collected.modCronExpr?.trim() ?? "";
+      if (!raw || validateCronExpressionFive(raw, PERIODIC_CRON_TZ)) return undefined;
+      return `modify ${job.id} cron ${raw.replace(/\s+/g, " ")}`;
+    }
+    if (kind === "shortname") {
+      const raw = collected.modNewShort ?? "";
+      const t = raw.trim().replace(/[/\\:*?"<>|]/g, "").slice(0, 24);
+      if (!t) return undefined;
+      return `modify ${job.id} short ${t}`;
+    }
+    if (kind === "clearshort") return `modify ${job.id} clear-short`;
+    if (kind === "delivery") {
+      const dm = collected.modDelivery?.trim() ?? "";
+      if (dm !== "stdout_nonempty" && dm !== "every_run") return undefined;
+      return `modify ${job.id} delivery ${dm}`;
+    }
+    if (kind !== "agent") return undefined;
+    const ins = collected.modInstr?.trim() ?? "";
+    return ins ? `modify ${job.id} agent ${ins}` : `modify ${job.id} agent`;
+  }
+  return undefined;
+}
+
 /** 向全局向导表注册「周期任务」向导（wizardId 固定为 periodic） */
 export function registerPeriodicJobsWizard(): void {
   const def: WizardDef = {
@@ -57,6 +112,8 @@ export function registerPeriodicJobsWizard(): void {
     title: "周期任务（schedule·CRON、trigger、列表、帮助）",
     requireAdmin: true,
     rootStepId: "per_main",
+    commandDomain: "periodic",
+    buildTerminalSub: buildPeriodicTerminalSub,
     steps: {
       per_main: {
         kind: "menu",
@@ -214,7 +271,7 @@ export function registerPeriodicJobsWizard(): void {
             n += 1;
             out.push({
               label: "修改 CRON 表达式",
-              help: `当前「${curCron}」· 时区 ${job.cronTimeZone ?? PERIODIC_CRON_TZ}`,
+              help: `当前「${curCron}」`,
               example: String(n),
               nextStepId: "per_mod_cron_expr",
               setCollected: { _modParamKind: "cron", modJobId: job.id },
@@ -368,116 +425,16 @@ export function registerPeriodicJobsWizard(): void {
       per_term: { kind: "terminal" },
     },
     onTerminal: async ({ ctx, msg, collected }) => {
-      const flow = collected._flow;
-      if (flow === "list") {
-        await handlePeriodicSlash({ notify: ctx.notify, agentCfg: ctx.agentCfg }, msg, "列表");
+      const sub = await buildPeriodicTerminalSub({ collected, msg });
+      if (!sub) {
+        await ctx.notify.replyText(msg, "向导数据不完整，无法生成命令。", "error");
         return;
       }
-      if (flow === "help") {
-        await handlePeriodicSlash({ notify: ctx.notify, agentCfg: ctx.agentCfg }, msg, "帮助");
-        return;
+      const ok = await dispatchWizardCommandWithDefaults({ ctx, msg, domain: "periodic", sub });
+      if (!ok) {
+        await ctx.notify.replyText(msg, `命令未注册：${sub}`, "error");
       }
-      const delivery = collected.delivery ?? "stdout_nonempty";
-      const desc = collected.desc?.trim() ?? "";
-      const sn = collected.shortName?.trim();
-      if (flow === "schedule") {
-        const cronRaw = collected.schedCron?.trim() ?? "";
-        const err = validateCronExpressionFive(cronRaw, PERIODIC_CRON_TZ);
-        if (err) {
-          await ctx.notify.replyText(msg, `CRON 无效：${err}`, "error");
-          return;
-        }
-        const cronNorm = cronRaw.replace(/\s+/g, " ");
-        let sub = `创建 schedule cron ${cronNorm}`;
-        if (sn) sub += ` 简称 ${sn}`;
-        sub += ` ${delivery} ${desc}`;
-        await handlePeriodicSlash({ notify: ctx.notify, agentCfg: ctx.agentCfg }, msg, sub);
-        return;
-      }
-      if (flow === "trigger") {
-        let sub = "创建 trigger";
-        if (sn) sub += ` 简称 ${sn}`;
-        sub += ` ${delivery} ${desc}`;
-        await handlePeriodicSlash({ notify: ctx.notify, agentCfg: ctx.agentCfg }, msg, sub);
-        return;
-      }
-      if (flow === "modify") {
-        const jidRaw = collected.modJobId?.trim() ?? "";
-        if (!jidRaw) {
-          await ctx.notify.replyText(msg, "向导数据缺失（任务 ID）。", "error");
-          return;
-        }
-        let job: PeriodicJob | undefined;
-        try {
-          job = await resolveUserPeriodicJob(msg.userId, jidRaw);
-        } catch (e) {
-          await ctx.notify.replyText(
-            msg,
-            `读取任务状态失败：${e instanceof Error ? e.message : String(e)}`.slice(0, 500),
-            "error",
-          );
-          return;
-        }
-        if (!job) {
-          await ctx.notify.replyText(msg, "未找到任务或无权限。", "error");
-          return;
-        }
-        const kind = collected._modParamKind?.trim() ?? "";
-        try {
-          if (kind === "cron") {
-            const raw = collected.modCronExpr?.trim() ?? "";
-            const ferr = validateCronExpressionFive(raw, PERIODIC_CRON_TZ);
-            if (ferr) {
-              await ctx.notify.replyText(msg, `CRON 无效：${ferr}`, "error");
-              return;
-            }
-            await patchPeriodicCronExpression(job, raw);
-            await ctx.notify.replyText(
-              msg,
-              `已更新 CRON 为「${raw.replace(/\s+/g, " ")}」，并已重算下次运行时间。`,
-              "success",
-            );
-            return;
-          }
-          if (kind === "shortname") {
-            const raw = collected.modNewShort ?? "";
-            const t = raw.trim().replace(/[/\\:*?"<>|]/g, "").slice(0, 24);
-            await patchPeriodicShortName(job.id, t || null);
-            await ctx.notify.replyText(msg, `已更新任务简称为「${t}」。`, "success");
-            return;
-          }
-          if (kind === "clearshort") {
-            await patchPeriodicShortName(job.id, null);
-            await ctx.notify.replyText(msg, "已清除任务简称。", "success");
-            return;
-          }
-          if (kind === "delivery") {
-            const dm = collected.modDelivery?.trim() ?? "";
-            if (dm !== "stdout_nonempty" && dm !== "every_run") {
-              await ctx.notify.replyText(msg, "无效的推送策略。", "error");
-              return;
-            }
-            await patchPeriodicDeliveryMode(job, dm);
-            await ctx.notify.replyText(msg, `已更新推送策略为 ${dm}。`, "success");
-            return;
-          }
-          if (kind === "agent") {
-            const ins = collected.modInstr?.trim() ?? "";
-            await handlePeriodicSlash({ notify: ctx.notify, agentCfg: ctx.agentCfg }, msg, `修改 ${job.id} ${ins}`);
-            return;
-          }
-        } catch (e) {
-          await ctx.notify.replyText(
-            msg,
-            `更新失败：${e instanceof Error ? e.message : String(e)}`.slice(0, 500),
-            "error",
-          );
-          return;
-        }
-        await ctx.notify.replyText(msg, "向导数据不完整：未识别修改类型，请从「修改已有任务参数」重新开始。", "error");
-        return;
-      }
-      await ctx.notify.replyText(msg, "向导内部错误：未知周期操作。", "error");
+      return;
     },
   };
   registerWizard(def);

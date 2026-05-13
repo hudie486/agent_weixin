@@ -1,4 +1,4 @@
-import { PERIODIC_CRON_TZ, validateCronExpressionFive } from "../plugins/periodic/cronResolve.js";
+import { PERIODIC_CRON_TZ, validateCronExpressionFive } from "../modules/periodic/cron.js";
 
 export type PeriodicProposal = {
   kind: "schedule" | "trigger" | null;

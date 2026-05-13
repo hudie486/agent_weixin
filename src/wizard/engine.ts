@@ -10,13 +10,8 @@ import {
   isPendingExpired,
   wizardStateFilePath,
 } from "./stateStore.js";
-import type {
-  WizardDef,
-  WizardHandlerCtx,
-  WizardPending,
-  WizardStep,
-  WizardStateFile,
-} from "./types.js";
+import type { WizardDef, WizardHandlerCtx, WizardPending, WizardStep, WizardStateFile } from "./types.js";
+import { formatWizardExecPreview } from "./terminalPreview.js";
 import { withWizardReplyPrefix, wrapNotifyForWizard } from "./replyPrefix.js";
 
 const EXIT_WORDS = new Set(["退出", "取消", "exit", "quit"]);
@@ -403,6 +398,16 @@ async function runTerminal(
   statePath: string,
 ): Promise<void> {
   setPending(state, msg.userId, null, statePath);
+  const domain = def.commandDomain;
+  let previewLine = "";
+  if (domain && def.buildTerminalSub) {
+    const raw = await Promise.resolve(def.buildTerminalSub({ collected, msg }));
+    const sub = raw?.replace(/\s+/g, " ").trim();
+    if (sub) previewLine = formatWizardExecPreview(domain, sub);
+  }
+  if (previewLine) {
+    await ctx.notify.replyPlain(msg, previewLine);
+  }
   const wctx: WizardHandlerCtx = { ...ctx, notify: wrapNotifyForWizard(ctx.notify) };
   try {
     await def.onTerminal({ ctx: wctx, msg, collected });

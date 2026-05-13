@@ -1,6 +1,6 @@
 # wechat-agent-bot
 
-基于 [wechatbot / iLink](https://www.npmjs.com/package/@wechatbot/wechatbot) 的微信私聊机器人：将消息交给本机 **Cursor Agent**（`agent` CLI）流式回复，并带有**按 CRON（上海时区）调度的周期 Python 脚本任务**、**环境变量远程注入**、**仓库拉取编译**、**Steam 好友状态监控**等扩展能力。
+基于 [wechatbot / iLink](https://www.npmjs.com/package/@wechatbot/wechatbot) 的微信私聊机器人：将消息交给本机 **Cursor Agent**（`agent` CLI）流式回复，并带有**按 CRON（上海时区）调度的周期 Python 脚本任务**、**环境变量远程注入**、**已登记本地/SSH 项目的 build.sh 编译与修复**、**Steam 好友状态监控**等扩展能力。
 
 - **运行环境**：Node.js **≥ 22**
 - **配置入口**：项目根目录 `.env`（可参考 [`.env.example`](./.env.example)）
@@ -46,13 +46,12 @@ npm start
 | --- | --- |
 | `/help` | 简短帮助 |
 | `/向导` / `/菜单` | 多步向导：代码 / 周期 / 环境（管理员）；向导内纯文本，发「退出」结束 |
-| `/周期 help` | 周期任务详细说明 |
-| `/周期 列表` | 任务列表；定时任务为 **CRON 与时区分一行、下次执行时间单独一行**；CRON 中星号为 **全角＊**（防微信把半角 `*` 当富文本吞字），发命令时仍用半角 |
-| `/周期 详情 <ID> [路径]` | 任务详情；加 `路径` 或 `path` 才显示本机作业目录 |
-| `/周期 创建 schedule cron <分> <时> <日> <月> <周> …` / `trigger …` | 创建脚本任务（五段 CRON 与 Linux crontab 一致，上海时区；可带 `简称`、deliveryMode）；详见 `/周期 help` |
-| `/周期 修改 / 删除 / 启用 / 停用 / 运行` | 见 `/周期 help` |
+| `/周期 help` / `list` / `detail <ID> [path]` | 周期任务帮助、列表、详情 |
+| `/周期 create schedule cron <分> <时> <日> <月> <周> [short <名称>] [stdout_nonempty\|every_run] <描述>` | 创建 schedule 任务 |
+| `/周期 create trigger [short <名称>] [stdout_nonempty\|every_run] <描述>` | 创建 trigger 任务 |
+| `/周期 modify <ID> [cron\|short\|clear-short\|delivery\|agent] ...` / `remove` / `enable` / `disable` / `run` | 修改、删除、启停、执行 |
 | `/环境 help` / `list` / `set` / `delete` | 远程环境变量（管理员） |
-| `/代码 help` | 项目登记、build.sh、产物配置、拉取/修复/编译（管理员）；HTTPS 克隆用 `/代码 克隆` |
+| `/代码 help` / `list` / `add` / `default` / `remove` / `config` / `compile` / `fix` | 代码项目管理（管理员） |
 | `/测试` | 固定回复「✅ 测试通过」，用于检查收发通路 |
 
 未授权用户会收到「未授权用户」提示（与业务消息一样经统一换行处理）。
@@ -83,15 +82,15 @@ npm start
 
 更全列表见 [`.env.example`](./.env.example)。常用项：
 
-- **Agent**：`AGENT_CMD`、`AGENT_ARGS_JSON`、`AGENT_INVOKE_MODE`、`AGENT_TIMEOUT_MS`、`AGENT_MAX_RUNTIME_MS`、`AGENT_IDLE_TIMEOUT_MS`
+- **Agent**：`AGENT_CMD`、`AGENT_ARGS_JSON`、`AGENT_INVOKE_MODE`、`AGENT_TIMEOUT_MS`、`AGENT_MAX_RUNTIME_MS`、`AGENT_IDLE_TIMEOUT_MS`、`AGENT_OUTPUT_MODE`、`AGENT_FORCE_STREAM_JSON`、`AGENT_NO_AUTO_PRINT_FLAG`
 - **微信 SDK**：`WECHATBOT_STORAGE_DIR`、`WECHATBOT_LOG_LEVEL`、`WECHATBOT_BASE_URL`（可选）
 - **安全**：`ALLOWED_USER_IDS`、`ADMIN_USER_IDS`（JSON 数组字符串）
 - **会话**：`SESSION_STORE_PATH`、`CHAT_SESSION_ENABLE`
 - **周期任务**：`PERIODIC_STATE_PATH`、`PERIODIC_JOB_ROOT`、`PERIODIC_SCAN_MS`、`PERIODIC_SCRIPT_TIMEOUT_MS` 等
 - **日志与调试**：`LOG_LEVEL`、`WECHAT_TRACE_IO`、`WECHAT_TERMINAL_IO`
 - **出站代理（微信 fetch）**：`HTTPS_PROXY`、`HTTP_PROXY`、`NO_PROXY`；`WECHATBOT_FETCH_USE_PROXY=0` 可关闭程序内强制绑定（见上文）
-- **展示**：`WX_EMOJI_STYLE`（`full` / `minimal` / `off`）
-- **/代码 模块**：`CODE_PROJECTS_PATH`、`CODE_PROJECT_ROOT_ALLOWLIST`、`CODE_ARTIFACT_GLOB`、`CODE_BUILD_TIMEOUT_MS`、`CODE_GIT_PULL_TIMEOUT_MS`（与 `COMPILE_*` 并列，见 [`.env.example`](./.env.example)）
+- **展示**：`WX_EMOJI_STYLE`（`full` / `minimal` / `off`）、`WX_AGENT_PROGRESS_MAX_CHARS`
+- **/代码 模块**：`CODE_PROJECTS_PATH`、`CODE_PROJECT_ROOT_ALLOWLIST`、`CODE_ARTIFACT_GLOB`、`CODE_BUILD_TIMEOUT_MS`（与 `COMPILE_TIMEOUT_MS`、`COMPILE_MAX_SEND_MB` 等并列，见 [`.env.example`](./.env.example)）
 - **多轮向导**：`WIZARD_STATE_PATH`、`WIZARD_TTL_MS`
 
 ## 目录与数据
