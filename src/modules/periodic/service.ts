@@ -291,7 +291,14 @@ export async function executePeriodicAction(
       await ctx.notify.replyText(msg, "Job not found", "error");
       return;
     }
-    await executePeriodicJob(job as PeriodicJob, ctx.agentCfg, ctx.notify).catch(() => undefined);
-    await ctx.notify.replyText(msg, "Executed once.", "success");
+    const out = await executePeriodicJob(job as PeriodicJob, ctx.agentCfg, ctx.notify).catch((e) => ({
+      ok: false as const,
+      errorSummary: e instanceof Error ? e.message : String(e),
+    }));
+    if (out.ok) {
+      await ctx.notify.replyText(msg, "Executed once.", "success");
+      return;
+    }
+    await ctx.notify.replyText(msg, `执行失败：${redactPathsForWx(out.errorSummary.slice(0, 350))}`, "error");
   }
 }

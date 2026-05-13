@@ -3,7 +3,7 @@ import { bumpNext, noteResult } from "./ops.js";
 import type { PeriodicJob } from "./types.js";
 import { isScriptPayload } from "./types.js";
 import type { NotifyChannel } from "../../notify/channel.js";
-import { executePeriodicScriptJob } from "./scriptRunner.js";
+import { executePeriodicScriptJob, type PeriodicScriptRunResult } from "./scriptRunner.js";
 import { jobWorkspaceAbsolute } from "./paths.js";
 import fs from "node:fs";
 
@@ -12,15 +12,16 @@ export async function executePeriodicJob(
   job: PeriodicJob,
   _agentCfg: AgentConfig,
   notify?: NotifyChannel,
-): Promise<void> {
+): Promise<PeriodicScriptRunResult> {
   if (!isScriptPayload(job.payload)) {
+    const summary = "该任务为旧版格式，已不支持。请删除后使用 /周期 创建 重建脚本任务。";
     await noteResult(
       job.id,
       false,
-      "该任务为旧版格式，已不支持。请删除后使用 /周期 创建 重建脚本任务。",
+      summary,
     );
     if (job.kind === "schedule") await bumpNext(job.id);
-    return;
+    return { ok: false, errorSummary: summary };
   }
 
   if (job.generationStatus !== "ready") {
@@ -30,10 +31,10 @@ export async function executePeriodicJob(
         : "脚本尚未就绪（生成中），请稍后再跑";
     await noteResult(job.id, false, msg.slice(0, 400));
     if (job.kind === "schedule") await bumpNext(job.id);
-    return;
+    return { ok: false, errorSummary: msg.slice(0, 400) };
   }
 
-  await executePeriodicScriptJob(job, notify);
+  return executePeriodicScriptJob(job, notify);
 }
 
 /** /周期 修改：在同一 agentChatId 与作业目录下继续对话 */

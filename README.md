@@ -56,6 +56,89 @@ npm start
 
 未授权用户会收到「未授权用户」提示（与业务消息一样经统一换行处理）。
 
+## 消息交互流程（路由 + 周期发送）
+
+下面按“微信入站”和“周期任务出站”两条链路梳理。
+
+### 1) 微信入站如何路由到模块、如何把消息映射为模块关键字
+
+```mermaid
+flowchart TD
+  A[微信文本消息] --> B[handleIncomingMessage]
+  B --> C{白名单通过?}
+  C -- 否 --> C1[reply 未授权用户并结束]
+  C -- 是 --> D{是否文本类型?}
+  D -- 否 --> D1[reply 暂只支持文本消息]
+  D -- 是 --> E{是否命中向导 pending?}
+  E -- 是 --> E1[handleWizardMessage 消费]
+  E -- 否 --> F{parseSlash 成功?}
+  F -- 否 --> G[dispatch domain=agent, source=chat]
+  G --> G1[Agent 模块执行对话流式回复]
+  F -- 是 --> H{slashName 是 向导/菜单?}
+  H -- 是 --> H1[startRootWizard]
+  H -- 否 --> I{微信内建命令 help/测试?}
+  I -- 是 --> I1[wechat 模块直接回复]
+  I -- 否 --> J[routeSlashCommand]
+  J --> K[tryRoutedSlash: 根命令映射 domain]
+  K --> L{domain: code/env/periodic?}
+  L -- 否 --> G
+  L -- 是 --> M[对应 resolver 解析 sub]
+  M --> N[取首词映射 action + rest]
+  N --> O[CommandRegistry.dispatch]
+  O --> P[对应模块 commands/service 执行]
+```
+
+关键点：
+
+- 根命令映射（模块路由）在 `src/wizard/slashCatalog.ts`：`/代码|/code -> code`、`/周期|/periodic -> periodic`、`/环境|/env -> env`。
+- `parseSlash` 在 `src/commands/slashParse.ts`：先统一全角斜杠，再得到 `name + rest`。
+- 模块关键字映射在 `src/modules/*/keywords.ts`：`resolvePeriodicAction` / `resolveCodeAction` / `resolveEnvAction` 会把 `sub` 首词（如 `create`、`list`）解析为 `action`，剩余部分作为 `rest` 传给模块服务层。
+- 如果不是斜杠命令（且不在向导态），统一走 `agent` 模块的 `chat` 通路。
+
+### 2) 周期触发后如何发送 stdout（含分包、是否发送、失败落盘补发）
+
+```mermaid
+flowchart TD
+  A[定时扫描 startPeriodicScheduler] --> B{job.enabled && kind=schedule && nextRunAt<=now}
+  B -- 否 --> B1[跳过]
+  B -- 是 --> C[queue.run 按 user 串行执行]
+  C --> D[executePeriodicJob]
+  D --> E{generationStatus=ready && payload=script?}
+  E -- 否 --> E1[noteResult失败 + schedule则bumpNext]
+  E -- 是 --> F[executePeriodicScriptJob]
+  F --> G[先 drainRetryMessagesForUser 补发历史失败]
+  G --> H[执行 python run.py 收集 stdout/stderr]
+  H --> I{deliveryMode}
+  I -- stdout_nonempty --> I1[stdout 非空才推送]
+  I -- every_run --> I2[每轮都推送, 空则 本轮无输出]
+  I1 --> K[按换行 splitStdoutBubbles 分包]
+  I2 --> K
+  K --> L[每包 notifyBubbleWithRetry 重试]
+  L --> M{该包最终失败?}
+  M -- 是 --> M1[enqueueRetryMessage 落盘]
+  M -- 否 --> M2[发送成功]
+  M1 --> M3[继续下一包]
+  M2 --> M3
+  M3 --> N[全部分包完成]
+  N --> P
+  P{kind=schedule?}
+  P -- 是 --> P1[bumpNext]
+  P -- 否(trigger) --> P2[不自动调度下次]
+```
+
+关键点：
+
+- 调度入口在 `src/plugins/periodic/sched.ts`，只自动扫描 `kind=schedule`；`trigger`（触发式）任务默认不参与定时扫描，通常通过 `/周期 run <ID>` 触发一次执行。
+- 发送策略在 `src/plugins/periodic/scriptRunner.ts`：
+  - `stdout_nonempty`：stdout 空时不发任何业务消息。
+  - `every_run`：stdout 空时也会发“本轮无输出”占位消息（用于确认“任务确实跑了”）。
+- 分包规则：stdout 按行切分（去空行），每行一个气泡；单包超长按 `PERIODIC_SCRIPT_MAX_STDOUT_CHARS` 截断；包与包间隔 `PERIODIC_MESSAGE_GAP_MS`。
+- 失败可靠性：
+  - 单包发送失败会重试（指数退避）。
+  - 仍失败则写入落盘队列（`PERIODIC_RETRY_QUEUE_PATH`，默认 `data/periodic-retry-queue.json`）。
+  - 每次任务执行前先补发队列；补发成功即从队列删除，实现“成功即删盘”。
+  - 脚本执行失败默认不主动推送；仅手动执行 `/周期 run <ID>` 时会在当前会话回复失败摘要。
+
 ## 消息换行与展示
 
 微信部分客户端对**单行 `\n`** 会压成空格。本项目通过以下方式提高多行展示稳定性：
