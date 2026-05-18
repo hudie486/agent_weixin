@@ -1,6 +1,6 @@
 # wechat-agent-bot
 
-基于 [wechatbot / iLink](https://www.npmjs.com/package/@wechatbot/wechatbot) 的微信私聊机器人：将消息交给本机 **Cursor Agent**（`agent` CLI）流式回复，并带有**按 CRON（上海时区）调度的周期 Python 脚本任务**、**环境变量远程注入**、**已登记本地/SSH 项目的 build.sh 编译与修复**、**Steam 好友状态监控**等扩展能力。
+基于 [wechatbot / iLink](https://www.npmjs.com/package/@wechatbot/wechatbot) 的微信私聊机器人：将消息交给本机 **Cursor Agent**（`agent` CLI）流式回复，并带有**按 CRON（上海时区）调度的周期 Node 脚本任务**、**环境变量远程注入**、**已登记本地/SSH 项目的 build.sh 编译与修复**、**Steam 好友状态监控**等扩展能力。
 
 - **运行环境**：Node.js **≥ 22**
 - **配置入口**：项目根目录 `.env`（可参考 [`.env.example`](./.env.example)）
@@ -9,13 +9,10 @@
 
 ```bash
 npm install
-pip install -r scripts/periodic/requirements.txt
 cp .env.example .env
 # 编辑 .env：至少配置微信侧存储目录、允许的用户、Agent 命令等
 npm run dev
 ```
-
-> **周期任务**：Node 会调用 `scripts/periodic/register_job.py` 读写状态；**croniter** 用于计算下次触发，请务必执行上一行的 `pip install`（CI / 新机器亦同）。
 
 开发模式下 `npm run dev` 会默认打开 `WECHAT_TERMINAL_IO=1`（在 `main.ts` 中按 `npm_lifecycle_event=dev` 自动设置，可用 `WECHAT_TERMINAL_IO=0` 关闭），终端会按 `INFO  [wx-io]` 格式打印收发的脱敏摘要。
 
@@ -23,7 +20,6 @@ npm run dev
 
 ```bash
 npm run build
-pip install -r scripts/periodic/requirements.txt
 npm start
 ```
 
@@ -34,24 +30,25 @@ npm start
 | 私聊对话 | **无向导 pending** 时，非斜杠文本走 `runAgentStreaming` 并尽量推流式进度；**在向导中**仅填参，与普通聊天隔离、不走该 Agent 通路 |
 | 斜杠命令 | 以 `/` 开头（全角 `／` 会被归一成 `/`），见下表 |
 | 用户白名单 | `ALLOWED_USER_IDS` 非空时仅列表内 `userId` 可用；空则不限 |
-| 管理员 | `ADMIN_USER_IDS` 中用户可使用需管理员权限的指令（环境注入、周期任务增删改、编译等） |
+| 管理员 | 管理员通过 `/用户 login <password>` 验证后，可执行用户管理、跨用户查看/操作与主动喊话 |
 | 会话续聊 | 默认 `CHAT_SESSION_ENABLE=1` 时，为每用户维护 Cursor `chatId`（`--resume`） |
-| 周期任务 | 由 Python 写 `PERIODIC_STATE_PATH`；**schedule** 使用 **5 段 CRON**（`Asia/Shanghai`），作业目录在 `PERIODIC_JOB_ROOT/<任务ID>`，入口默认 `run.py` |
-| 环境注入 | `/环境 set` 写入 JSON 并 `merge` 到当前进程，供脚本与 Agent 读取 `process.env` |
-| 多轮向导 | `/向导` 或 `/菜单` 进入；含**代码**、**周期**、**环境**子向导；向导内纯文本填参，发「退出」结束 |
+| 周期任务 | Node 读写 `PERIODIC_STATE_PATH`；**schedule** 使用 **5 段 CRON**（`Asia/Shanghai`），作业目录在 `PERIODIC_JOB_ROOT/<任务ID>`，入口默认 `run.mjs` |
+| 环境注入 | `/环境 set` 按 `userId` 隔离写入注入 JSON；周期脚本运行时会自动注入所属用户环境变量 |
+| 多轮向导 | `/向导` 或 `/菜单` 进入；含**代码**、**周期**、**环境**、**用户中心**子向导；向导内纯文本填参，发「退出」结束 |
 
 ## 微信中的命令
 
 | 命令 | 作用 |
 | --- | --- |
 | `/help` | 简短帮助 |
-| `/向导` / `/菜单` | 多步向导：代码 / 周期 / 环境（管理员）；向导内纯文本，发「退出」结束 |
+| `/向导` / `/菜单` | 多步向导：代码 / 周期 / 环境 / 用户中心；向导内纯文本，发「退出」结束 |
 | `/周期 help` / `list` / `detail <ID> [path]` | 周期任务帮助、列表、详情 |
 | `/周期 create schedule cron <分> <时> <日> <月> <周> [short <名称>] [stdout_nonempty\|every_run] <描述>` | 创建 schedule 任务 |
 | `/周期 create trigger [short <名称>] [stdout_nonempty\|every_run] <描述>` | 创建 trigger 任务 |
 | `/周期 modify <ID> [cron\|short\|clear-short\|delivery\|agent] ...` / `remove` / `enable` / `disable` / `run` | 修改、删除、启停、执行 |
-| `/环境 help` / `list` / `set` / `delete` | 远程环境变量（管理员） |
-| `/代码 help` / `list` / `add` / `default` / `remove` / `config` / `compile` / `fix` | 代码项目管理（管理员） |
+| `/环境 help` / `list` / `set` / `delete` | 用户级环境变量管理（管理员验证后可 `for <userId>` 跨用户操作） |
+| `/代码 help` / `list` / `add` / `default` / `remove` / `config` / `compile` / `fix` | 代码项目管理（管理员验证后可 `for <userId>` 跨用户操作） |
+| `/用户 help` / `login` / `logout` / `add` / `list` / `set-admin` / `inspect` / `password` / `call` / `notify` | 用户中心（管理员认证、用户管理、普通用户喊话管理员、管理员主动通知） |
 | `/测试` | 固定回复「✅ 测试通过」，用于检查收发通路 |
 
 未授权用户会收到「未授权用户」提示（与业务消息一样经统一换行处理）。
@@ -80,7 +77,7 @@ flowchart TD
   I -- 是 --> I1[wechat 模块直接回复]
   I -- 否 --> J[routeSlashCommand]
   J --> K[tryRoutedSlash: 根命令映射 domain]
-  K --> L{domain: code/env/periodic?}
+  K --> L{domain: code/env/periodic/user?}
   L -- 否 --> G
   L -- 是 --> M[对应 resolver 解析 sub]
   M --> N[取首词映射 action + rest]
@@ -90,12 +87,12 @@ flowchart TD
 
 关键点：
 
-- 根命令映射（模块路由）在 `src/wizard/slashCatalog.ts`：`/代码|/code -> code`、`/周期|/periodic -> periodic`、`/环境|/env -> env`。
+- 根命令映射（模块路由）在 `src/wizard/slashCatalog.ts`：`/代码|/code -> code`、`/周期|/periodic -> periodic`、`/环境|/env -> env`、`/用户|/user -> user`。
 - `parseSlash` 在 `src/commands/slashParse.ts`：先统一全角斜杠，再得到 `name + rest`。
-- 模块关键字映射在 `src/modules/*/keywords.ts`：`resolvePeriodicAction` / `resolveCodeAction` / `resolveEnvAction` 会把 `sub` 首词（如 `create`、`list`）解析为 `action`，剩余部分作为 `rest` 传给模块服务层。
+- 模块关键字映射在 `src/modules/*/keywords.ts`：`resolvePeriodicAction` / `resolveCodeAction` / `resolveEnvAction` / `resolveUserAction` 会把 `sub` 首词（如 `create`、`list`）解析为 `action`，剩余部分作为 `rest` 传给模块服务层。
 - 如果不是斜杠命令（且不在向导态），统一走 `agent` 模块的 `chat` 通路。
 
-### 2) 周期触发后如何发送 stdout（含分包、是否发送、失败落盘补发）
+### 2) 周期触发后如何发送 stdout（是否发送、失败落盘补发）
 
 ```mermaid
 flowchart TD
@@ -107,19 +104,18 @@ flowchart TD
   E -- 否 --> E1[noteResult失败 + schedule则bumpNext]
   E -- 是 --> F[executePeriodicScriptJob]
   F --> G[先 drainRetryMessagesForUser 补发历史失败]
-  G --> H[执行 python run.py 收集 stdout/stderr]
+  G --> H[执行 node run.mjs 收集 stdout/stderr]
   H --> I{deliveryMode}
   I -- stdout_nonempty --> I1[stdout 非空才推送]
   I -- every_run --> I2[每轮都推送, 空则 本轮无输出]
-  I1 --> K[按换行 splitStdoutBubbles 分包]
+  I1 --> K[整段 stdout 单条发送]
   I2 --> K
-  K --> L[每包 notifyBubbleWithRetry 重试]
-  L --> M{该包最终失败?}
+  K --> L[notifyBubbleWithRetry 重试]
+  L --> M{发送最终失败?}
   M -- 是 --> M1[enqueueRetryMessage 落盘]
   M -- 否 --> M2[发送成功]
-  M1 --> M3[继续下一包]
-  M2 --> M3
-  M3 --> N[全部分包完成]
+  M1 --> N[等待后续补发]
+  M2 --> N[本轮完成]
   N --> P
   P{kind=schedule?}
   P -- 是 --> P1[bumpNext]
@@ -132,9 +128,9 @@ flowchart TD
 - 发送策略在 `src/plugins/periodic/scriptRunner.ts`：
   - `stdout_nonempty`：stdout 空时不发任何业务消息。
   - `every_run`：stdout 空时也会发“本轮无输出”占位消息（用于确认“任务确实跑了”）。
-- 分包规则：stdout 按行切分（去空行），每行一个气泡；单包超长按 `PERIODIC_SCRIPT_MAX_STDOUT_CHARS` 截断；包与包间隔 `PERIODIC_MESSAGE_GAP_MS`。
+- 推送规则：stdout 作为单条消息发送；超长按 `PERIODIC_SCRIPT_MAX_STDOUT_CHARS` 截断。
 - 失败可靠性：
-  - 单包发送失败会重试（指数退避）。
+  - 单条发送失败会重试（指数退避）。
   - 仍失败则写入落盘队列（`PERIODIC_RETRY_QUEUE_PATH`，默认 `data/periodic-retry-queue.json`）。
   - 每次任务执行前先补发队列；补发成功即从队列删除，实现“成功即删盘”。
   - 脚本执行失败默认不主动推送；仅手动执行 `/周期 run <ID>` 时会在当前会话回复失败摘要。
@@ -167,7 +163,7 @@ flowchart TD
 
 - **Agent**：`AGENT_CMD`、`AGENT_ARGS_JSON`、`AGENT_INVOKE_MODE`、`AGENT_TIMEOUT_MS`、`AGENT_MAX_RUNTIME_MS`、`AGENT_IDLE_TIMEOUT_MS`、`AGENT_OUTPUT_MODE`、`AGENT_FORCE_STREAM_JSON`、`AGENT_NO_AUTO_PRINT_FLAG`
 - **微信 SDK**：`WECHATBOT_STORAGE_DIR`、`WECHATBOT_LOG_LEVEL`、`WECHATBOT_BASE_URL`（可选）
-- **安全**：`ALLOWED_USER_IDS`、`ADMIN_USER_IDS`（JSON 数组字符串）
+- **安全与多用户**：`ALLOWED_USER_IDS`、`USER_STORE_PATH`、`ADMIN_LOGIN_PASSWORD`、`ADMIN_AUTH_PATH`
 - **会话**：`SESSION_STORE_PATH`、`CHAT_SESSION_ENABLE`
 - **周期任务**：`PERIODIC_STATE_PATH`、`PERIODIC_JOB_ROOT`、`PERIODIC_SCAN_MS`、`PERIODIC_SCRIPT_TIMEOUT_MS` 等
 - **日志与调试**：`LOG_LEVEL`、`WECHAT_TRACE_IO`、`WECHAT_TERMINAL_IO`
@@ -183,9 +179,11 @@ flowchart TD
 | `data/.wechatbot/` | 微信机器人登录与 SDK 状态（默认，可改 `WECHATBOT_STORAGE_DIR`） |
 | `data/sessions.json` | 用户 → Cursor `chatId` 映射（可改 `SESSION_STORE_PATH`） |
 | `data/periodic-state.json` | 周期任务元数据 |
-| `data/periodic-jobs/<id>/` | 各任务工作区与 `run.py` 等 |
-| `data/injected-env.json` | 环境注入键值（可改 `INJECTED_ENV_PATH`） |
+| `data/periodic-jobs/<id>/` | 各任务工作区与 `run.mjs` 等（启动时会将旧 `run.py` 自动迁移为 `run.mjs` 并删除 Python 文件；复杂脚本由 Agent 后台改写） |
+| `data/injected-env.json` | 用户级环境注入键值（按 `userId` 隔离；可改 `INJECTED_ENV_PATH`） |
 | `data/code-projects.json` | `/代码` 已登记项目（可改 `CODE_PROJECTS_PATH`） |
+| `data/users.json` | 多用户启用状态（可改 `USER_STORE_PATH`） |
+| `data/admin-auth.json` | 管理员口令持久化（可改 `ADMIN_AUTH_PATH`） |
 | `data/wizard-state.json` | 多轮向导 pending（可改 `WIZARD_STATE_PATH`） |
 
 ## 脚本
@@ -196,10 +194,9 @@ flowchart TD
 | `npm run build` | `tsc` 编译到 `dist/` |
 | `npm start` | 运行 `node dist/main.js` |
 | `npm test` | Vitest |
-| `pip install -r scripts/periodic/requirements.txt` | 周期任务状态脚本依赖 **croniter**（与 `npm test` 中 Python 用例一致；生产环境亦需） |
 
 ## 许可与依赖
 
 - 业务代码以项目内 `package.json` 与许可证为准（若未单独声明，请自行补充）。
 - 核心通信依赖 `@wechatbot/wechatbot`，Agent 侧依赖本机已安装的 Cursor **`agent`/`cursor-agent`** 可执行环境。
-- 周期状态脚本依赖 Python **croniter**（见 `scripts/periodic/requirements.txt`）；Node 侧 CRON 校验使用 **`cron-parser`**（随 `npm install` 安装）。
+- 周期任务 CRON 校验与下次触发计算均使用 **`cron-parser`**（随 `npm install` 安装）。

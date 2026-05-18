@@ -5,6 +5,7 @@
 import { registerCodeWizardModule } from "../modules/code/wizard.js";
 import { registerPeriodicWizardModule } from "../modules/periodic/wizard.js";
 import { registerEnvWizardModule } from "../modules/env/wizard.js";
+import { registerUserWizardModule } from "../modules/user/wizard.js";
 
 let registered = false;
 
@@ -15,4 +16,5 @@ export function registerAllWizards(): void {
   registerCodeWizardModule();
   registerPeriodicWizardModule();
   registerEnvWizardModule();
+  registerUserWizardModule();
 }

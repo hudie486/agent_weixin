@@ -6,7 +6,7 @@ import type { IncomingMessage } from "@wechatbot/wechatbot";
 import type { MenuOptionDef, WizardCollected, WizardDef } from "../../wizard/types.js";
 import { registerWizard } from "../../wizard/registry.js";
 import { dispatchWizardCommandWithDefaults } from "../../framework/wizard/adapters.js";
-import { listJobsState } from "./ops.js";
+import { listJobsState } from "./state.js";
 import type { PeriodicJob } from "./types.js";
 import { isScriptPayload } from "./types.js";
 import { periodicJobPickerLabel } from "./formatJobs.js";
@@ -41,6 +41,23 @@ function validateSchedCron(s: string): string | null {
   return validateCronExpressionFive(s.trim(), PERIODIC_CRON_TZ);
 }
 
+function resolveWizardTargetUserId(msg: IncomingMessage, collected: WizardCollected): string {
+  const t = collected._targetUserId?.trim();
+  return t || msg.userId;
+}
+
+function withTargetAfterAction(
+  action: string,
+  rest: string,
+  msg: IncomingMessage,
+  collected: WizardCollected,
+): string {
+  const target = resolveWizardTargetUserId(msg, collected);
+  const trimmed = rest.trim();
+  if (target === msg.userId) return trimmed ? `${action} ${trimmed}` : action;
+  return trimmed ? `${action} for ${target} ${trimmed}` : `${action} for ${target}`;
+}
+
 async function resolveUserPeriodicJob(uid: string, idOrPrefix: string): Promise<PeriodicJob | undefined> {
   const st = await listJobsState();
   return st.jobs.find((j) => j.notifyUserId === uid && (j.id === idOrPrefix || j.id.startsWith(idOrPrefix)));
@@ -54,7 +71,7 @@ async function buildPeriodicTerminalSub({
   msg: IncomingMessage;
 }): Promise<string | undefined> {
   const flow = collected._flow;
-  if (flow === "list") return "list";
+  if (flow === "list") return withTargetAfterAction("list", "", msg, collected);
   if (flow === "help") return "help";
   const delivery = collected.delivery ?? "stdout_nonempty";
   const desc = collected.desc?.trim() ?? "";
@@ -64,43 +81,45 @@ async function buildPeriodicTerminalSub({
     const err = validateCronExpressionFive(cronRaw, PERIODIC_CRON_TZ);
     if (err) return undefined;
     const cronNorm = cronRaw.replace(/\s+/g, " ");
-    let sub = `create schedule cron ${cronNorm}`;
-    if (sn) sub += ` short ${sn}`;
-    sub += ` ${delivery} ${desc}`;
-    return sub;
+    let rest = `schedule cron ${cronNorm}`;
+    if (sn) rest += ` short ${sn}`;
+    rest += sn ? ` short ${sn}` : "";
+    rest += ` ${delivery} ${desc}`;
+    return withTargetAfterAction("create", rest, msg, collected);
   }
   if (flow === "trigger") {
-    let sub = "create trigger";
-    if (sn) sub += ` short ${sn}`;
-    sub += ` ${delivery} ${desc}`;
-    return sub;
+    let rest = "trigger";
+    if (sn) rest += ` short ${sn}`;
+    rest += ` ${delivery} ${desc}`;
+    return withTargetAfterAction("create", rest, msg, collected);
   }
   if (flow === "modify") {
     const jidRaw = collected.modJobId?.trim() ?? "";
     if (!jidRaw) return undefined;
-    const job = await resolveUserPeriodicJob(msg.userId, jidRaw);
+    const targetUid = resolveWizardTargetUserId(msg, collected);
+    const job = await resolveUserPeriodicJob(targetUid, jidRaw);
     if (!job) return undefined;
     const kind = collected._modParamKind?.trim() ?? "";
     if (kind === "cron") {
       const raw = collected.modCronExpr?.trim() ?? "";
       if (!raw || validateCronExpressionFive(raw, PERIODIC_CRON_TZ)) return undefined;
-      return `modify ${job.id} cron ${raw.replace(/\s+/g, " ")}`;
+      return withTargetAfterAction("modify", `${job.id} cron ${raw.replace(/\s+/g, " ")}`, msg, collected);
     }
     if (kind === "shortname") {
       const raw = collected.modNewShort ?? "";
       const t = raw.trim().replace(/[/\\:*?"<>|]/g, "").slice(0, 24);
       if (!t) return undefined;
-      return `modify ${job.id} short ${t}`;
+      return withTargetAfterAction("modify", `${job.id} short ${t}`, msg, collected);
     }
-    if (kind === "clearshort") return `modify ${job.id} clear-short`;
+    if (kind === "clearshort") return withTargetAfterAction("modify", `${job.id} clear-short`, msg, collected);
     if (kind === "delivery") {
       const dm = collected.modDelivery?.trim() ?? "";
       if (dm !== "stdout_nonempty" && dm !== "every_run") return undefined;
-      return `modify ${job.id} delivery ${dm}`;
+      return withTargetAfterAction("modify", `${job.id} delivery ${dm}`, msg, collected);
     }
     if (kind !== "agent") return undefined;
     const ins = collected.modInstr?.trim() ?? "";
-    return ins ? `modify ${job.id} agent ${ins}` : `modify ${job.id} agent`;
+    return withTargetAfterAction("modify", ins ? `${job.id} agent ${ins}` : `${job.id} agent`, msg, collected);
   }
   return undefined;
 }
@@ -110,11 +129,37 @@ export function registerPeriodicJobsWizard(): void {
   const def: WizardDef = {
     id: "periodic",
     title: "周期任务（schedule·CRON、trigger、列表、帮助）",
-    requireAdmin: true,
-    rootStepId: "per_main",
+    requireAdmin: false,
+    rootStepId: "per_scope",
     commandDomain: "periodic",
     buildTerminalSub: buildPeriodicTerminalSub,
     steps: {
+      per_scope: {
+        kind: "menu",
+        prompt: "请选择操作目标用户：",
+        options: [
+          {
+            label: "当前用户（默认）",
+            help: "后续命令不带 for <userId>",
+            example: "1",
+            nextStepId: "per_main",
+            setCollected: { _targetUserId: "" },
+          },
+          {
+            label: "指定用户（管理员）",
+            help: "后续命令统一追加 for <userId>",
+            example: "2",
+            nextStepId: "per_target_user",
+          },
+        ],
+      },
+      per_target_user: {
+        kind: "freeText",
+        prompt: "请输入目标 userId（后续步骤统一按该用户执行）：",
+        field: "_targetUserId",
+        validate: validateNonEmpty,
+        nextStepId: "per_main",
+      },
       per_main: {
         kind: "menu",
         prompt: "请选择：",
@@ -141,8 +186,8 @@ export function registerPeriodicJobsWizard(): void {
             setCollected: { _flow: "modify" },
           },
           {
-            label: "查看我的任务列表",
-            help: "同 /周期 列表",
+            label: "查看任务列表",
+            help: "同 /周期 list（目标用户由一级菜单决定）",
             example: "4",
             nextStepId: "per_term",
             setCollected: { _flow: "list" },
@@ -159,11 +204,12 @@ export function registerPeriodicJobsWizard(): void {
       per_mod_pick: {
         kind: "dynamicMenu",
         prompt: "请选择要修改的任务（按描述/简称区分；选中后将列出可改参数项）：",
-        loadOptions: async ({ ctx: _ctx, msg, collected: _c }) => {
+        loadOptions: async ({ ctx: _ctx, msg, collected }) => {
+          const targetUid = resolveWizardTargetUserId(msg, collected);
           let jobs: PeriodicJob[] = [];
           try {
             const st = await listJobsState();
-            jobs = st.jobs.filter((j) => j.notifyUserId === msg.userId);
+            jobs = st.jobs.filter((j) => j.notifyUserId === targetUid);
           } catch {
             jobs = [];
           }
@@ -172,13 +218,13 @@ export function registerPeriodicJobsWizard(): void {
           if (jobs.length === 0) {
             return [
               {
-                label: "我暂无可选任务（手动输入要改的任务 ID）",
+                label: "当前目标用户暂无可选任务（手动输入要改的任务 ID）",
                 help: "支持前缀匹配，与 /周期 修改 一致",
                 example: "1",
                 nextStepId: "per_mod_id_manual",
               },
               {
-                label: "先查看我的任务列表",
+                label: "先查看当前目标用户任务列表",
                 help: "对照「🪪ID」后再从向导进入修改",
                 example: "2",
                 nextStepId: "per_term",
@@ -245,7 +291,7 @@ export function registerPeriodicJobsWizard(): void {
           }
           let job: PeriodicJob | undefined;
           try {
-            job = await resolveUserPeriodicJob(msg.userId, raw);
+            job = await resolveUserPeriodicJob(resolveWizardTargetUserId(msg, collected), raw);
           } catch {
             job = undefined;
           }
@@ -305,7 +351,7 @@ export function registerPeriodicJobsWizard(): void {
           }
           n += 1;
           out.push({
-            label: "用 Agent 续聊改 run.py（自然语言）",
+            label: "用 Agent 续聊改 run.mjs（自然语言）",
             help: "同 /周期 修改；留空则使用系统默认补充说明",
             example: String(n),
             nextStepId: "per_mod_agent_instr",
@@ -357,7 +403,7 @@ export function registerPeriodicJobsWizard(): void {
         nextStepId: "per_term",
         hintLines: [
           "本步可选操作说明：",
-          "发送一行自然语言说明希望如何改 run.py 等",
+          "发送一行自然语言说明希望如何改 run.mjs 等",
           "留空整行（或只发一个空格）表示使用系统默认补充说明",
         ],
       },
@@ -417,7 +463,7 @@ export function registerPeriodicJobsWizard(): void {
       },
       per_desc: {
         kind: "freeText",
-        prompt: "请输入任务描述（将交给 Agent 生成 run.py，可含 URL、代理等自然语言）：",
+        prompt: "请输入任务描述（将交给 Agent 生成 run.mjs，可含 URL、代理等自然语言）：",
         field: "desc",
         validate: validateDesc,
         nextStepId: "per_term",

@@ -10,6 +10,7 @@ const PREFIX: Record<WizardCommandDomain, string> = {
   code: "/代码",
   periodic: "/周期",
   env: "/环境",
+  user: "/用户",
 };
 
 /** 微信根命令名（parseSlash 已 trim + toLowerCase 的 name）→ 业务域 */
@@ -20,6 +21,7 @@ const ROOT_TO_DOMAIN: Record<string, WizardCommandDomain> = {
   periodic: "periodic",
   环境: "env",
   env: "env",
+  用户: "user",
 };
 
 export function slashPrefix(domain: WizardCommandDomain): string {

@@ -9,7 +9,7 @@ export async function executeEnvCommand(
 ): Promise<void> {
   const ok = await executeEnvCommandSub(ctx, msg, sub);
   if (!ok) {
-    await ctx.notify.replyText(msg, "Unknown subcommand, use /env help", "warn");
+    await ctx.notify.replyText(msg, "未知子命令，请使用 /环境 帮助", "warn");
   }
 }
 

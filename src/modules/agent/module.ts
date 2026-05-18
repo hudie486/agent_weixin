@@ -7,38 +7,12 @@ import {
 import { getChatId, saveSessionStore, setChatId } from "../../session/store.js";
 import { baseChatSystemPrompt, periodicAgentInstruction } from "../../prompts/index.js";
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
+import { sanitizeWeChatAgentText } from "../../util/wxAgentReplySanitize.js";
 import { extractPeriodicProposal } from "../../handler/proposal.js";
 import type { FrameworkContext, ModuleCommand, ModuleHandler } from "../../framework/contracts/module.js";
 
 function wantsPeriodicHint(text: string): boolean {
   return /周期|定时|触发|任务|cron/i.test(text);
-}
-
-function norm(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
-}
-
-function shouldSendAgentFinalReply(
-  display: string,
-  streamAssistantPlain: string | undefined,
-  progressWasSent: boolean,
-  runnerMarksDup?: boolean,
-): boolean {
-  if (runnerMarksDup) return false;
-  const d = norm(display);
-  if (!d) return false;
-  if (!progressWasSent) return true;
-  if (!streamAssistantPlain?.trim()) return true;
-  const streamVisible = extractPeriodicProposal(streamAssistantPlain).text;
-  const s = norm(streamVisible);
-  if (!s) return true;
-  if (d === s) return false;
-  const shorter = d.length <= s.length ? d : s;
-  const longer = d.length > s.length ? d : s;
-  if (shorter.length >= 12 && longer.includes(shorter) && shorter.length / longer.length >= 0.82) {
-    return false;
-  }
-  return true;
 }
 
 export async function executeAgentConversation(
@@ -72,13 +46,12 @@ export async function executeAgentConversation(
     cfg,
     traceId: `chat:${msg.userId}:${Date.now()}`,
     stream: {
-      shouldDedupeFinal: true,
       onChunk: async (chunk) => {
         sawProgress = true;
-        await ctx.notify.replyText(msg, redactPathsForWx(chunk), "progress");
+        const safe = sanitizeWeChatAgentText(redactPathsForWx(chunk));
+        await ctx.notify.replyText(msg, safe, "progress");
       },
     },
-    finalizeChatDedupe: true,
   });
 
   if (!res.ok) {
@@ -87,19 +60,12 @@ export async function executeAgentConversation(
   }
 
   const { text: display, proposal } = extractPeriodicProposal(res.text);
-  if (
-    display &&
-    shouldSendAgentFinalReply(
-      display,
-      res.streamAssistantPlain,
-      sawProgress,
-      res.streamDeliveredFullReply,
-    )
-  ) {
-    await ctx.notify.replyText(msg, redactPathsForWx(display.slice(0, 1200)), "info");
+  const displayOut = sanitizeWeChatAgentText(redactPathsForWx(display));
+  if (displayOut && !sawProgress) {
+    await ctx.notify.replyText(msg, displayOut.slice(0, 1200), "info");
   }
 
-  if (proposal?.kind) {
+  if (proposal?.kind && !/\/周期\s*创建/i.test(display)) {
     await ctx.notify.replyText(
       msg,
       "周期任务请用命令创建：/周期 创建 schedule cron <分> <时> <日> <月> <周> 或 /周期 创建 trigger …（勿依赖对话末尾 JSON）。发 /周期 help 查看可选参数。",

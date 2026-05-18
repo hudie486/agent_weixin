@@ -6,7 +6,7 @@ import type { CommandRegistry } from "./registry.js";
 
 export type ResolveActionFn = (sub: string) => { action: string; rest: string } | null;
 
-export type ActionResolvers = Partial<Record<"periodic" | "code" | "env", ResolveActionFn>>;
+export type ActionResolvers = Partial<Record<"periodic" | "code" | "env" | "user", ResolveActionFn>>;
 
 export async function routeSlashCommand(
   registry: CommandRegistry,
@@ -19,7 +19,7 @@ export async function routeSlashCommand(
   if (!slash) return false;
   const routed = tryRoutedSlash(slash);
   if (!routed) return false;
-  if (routed.domain !== "periodic" && routed.domain !== "code" && routed.domain !== "env") return false;
+  if (routed.domain !== "periodic" && routed.domain !== "code" && routed.domain !== "env" && routed.domain !== "user") return false;
   const resolver = resolvers[routed.domain];
   if (!resolver) return false;
   const parsed = resolver(routed.sub);

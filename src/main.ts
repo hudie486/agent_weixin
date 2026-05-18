@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { loadInjectedEnvIntoProcess } from "./config/injectedEnv.js";
-import { TransportError, WeChatBot } from "@wechatbot/wechatbot";
+import { TransportError, WeChatBot, type IncomingMessage } from "@wechatbot/wechatbot";
+import type { QrLoginCallbacks } from "@wechatbot/wechatbot";
 import { loadAgentConfig } from "./agent/index.js";
 import { createNotifyChannel } from "./notify/channel.js";
 import { createPerKeyQueue } from "./tasks/perUserQueue.js";
@@ -14,6 +15,8 @@ import { createLogger, redactSecrets } from "./logger.js";
 import { wechatTraceIoEnabled, terminalWechatIoEnabled } from "./util/wechatTrace.js";
 import { redactPathsForWx } from "./util/redactPathsForWx.js";
 import { applyGlobalFetchProxyFromEnv } from "./util/globalFetchProxy.js";
+import { MultiBotManager, type BotRuntime } from "./multiBot/manager.js";
+import { launchWeChatPollLoop } from "./util/wechatPollLaunch.js";
 
 const log = createLogger("main");
 const wxIoLog = createLogger("wx-io");
@@ -43,6 +46,13 @@ function isRetryableNetworkError(e: unknown): boolean {
   return /\b(ECONNRESET|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|fetch failed)\b/i.test(blob);
 }
 
+function resolveUserVisibleIlinkLimitMessage(e: unknown): string | undefined {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (msg.startsWith("ILINK_WINDOW_EXPIRED:")) return msg.replace("ILINK_WINDOW_EXPIRED:", "").trim();
+  if (msg.startsWith("ILINK_CONSECUTIVE_LIMIT:")) return msg.replace("ILINK_CONSECUTIVE_LIMIT:", "").trim();
+  return undefined;
+}
+
 function logNetworkFailureHints(): void {
   log.error(
     [
@@ -55,12 +65,12 @@ function logNetworkFailureHints(): void {
   );
 }
 
-async function loginWithRetries(bot: WeChatBot): Promise<void> {
+async function loginWithRetries(bot: WeChatBot, callbacks?: QrLoginCallbacks): Promise<void> {
   const max = parsePositiveInt(process.env.WECHATBOT_LOGIN_MAX_RETRIES, 12);
   const baseMs = parsePositiveInt(process.env.WECHATBOT_LOGIN_RETRY_MS, 4000);
   for (let attempt = 1; attempt <= max; attempt++) {
     try {
-      await bot.login();
+      await bot.login({ callbacks });
       return;
     } catch (e) {
       const retry = attempt < max && isRetryableNetworkError(e);
@@ -111,30 +121,27 @@ async function bootstrap(): Promise<void> {
     storage: "file",
     storageDir,
     logLevel,
-    loginCallbacks: {
-      onQrUrl: (url) => {
-        log.info(`请扫码登录：${url}`);
-      },
-      onScanned: () => log.info("已扫码，确认登录…"),
-    },
   });
 
-  const notify = createNotifyChannel(bot);
-  const session = loadSessionStore(sessionPath());
-  const queue = createPerKeyQueue();
-
-  const ctx = {
+  const adminSessionPath = sessionPath();
+  const session = loadSessionStore(adminSessionPath);
+  const notify = createNotifyChannel(bot, { session, sessionPath: adminSessionPath, instanceId: "admin-main" });
+  const chatQueue = createPerKeyQueue();
+  const periodicQueue = createPerKeyQueue();
+  const botManager = new MultiBotManager(agentCfg);
+  botManager.registerExistingRuntime({
+    instanceId: "admin-main",
     bot,
     notify,
-    agentCfg,
     session,
-    sessionPath: sessionPath(),
-  };
+    sessionPath: adminSessionPath,
+    isAdminInstance: true,
+  });
 
-  startPeriodicModuleScheduler({ agentCfg, queue, notify });
+  startPeriodicModuleScheduler({ agentCfg, periodicQueue, notify });
   startSteamFriendsMonitor({ notify });
 
-  bot.onMessage((msg) => {
+  const handleRuntimeMessage = (rt: BotRuntime, msg: IncomingMessage): void => {
     if (wechatTraceIoEnabled() || terminalWechatIoEnabled()) {
       const preview =
         msg.type === "text"
@@ -145,22 +152,40 @@ async function bootstrap(): Promise<void> {
 
     const runHandler = async (): Promise<void> => {
       try {
-        await bot.sendTyping(msg.userId);
-        await handleIncomingMessage(ctx, msg);
+        await rt.bot.sendTyping(msg.userId);
+        await handleIncomingMessage(
+          {
+            bot: rt.bot,
+            botManager,
+            instanceId: rt.instanceId,
+            notify: rt.notify,
+            agentCfg,
+            session: rt.session,
+            sessionPath: rt.sessionPath,
+          },
+          msg,
+        );
       } catch (e) {
         log.error("handle message", e);
         try {
-          await notify.replyText(
+          const iLinkLimit = resolveUserVisibleIlinkLimitMessage(e);
+          const networkLike = isRetryableNetworkError(e);
+          const userMsg = iLinkLimit
+            ? iLinkLimit
+            : networkLike
+            ? "网络异常，消息发送失败，请稍后重试。"
+            : `内部错误：${redactPathsForWx(e instanceof Error ? e.message.slice(0, 300) : String(e))}`;
+          await rt.notify.replyText(
             msg,
-            `内部错误：${redactPathsForWx(e instanceof Error ? e.message.slice(0, 300) : String(e))}`,
-            "error",
+            userMsg,
+            iLinkLimit || networkLike ? "warn" : "error",
           );
         } catch {
           /* ignore */
         }
       } finally {
         try {
-          await bot.stopTyping(msg.userId);
+          await rt.bot.stopTyping(msg.userId);
         } catch {
           /* ignore */
         }
@@ -175,21 +200,43 @@ async function bootstrap(): Promise<void> {
     };
 
     if (slashBypass) void job();
-    else void queue.run(msg.userId, job);
-  });
+    else void chatQueue.run(msg.userId, job);
+  };
+  botManager.setMessageHandler(handleRuntimeMessage);
 
+  let shuttingDown = false;
   const shutdown = (): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     log.info("shutdown");
-    bot.stop();
-    saveSessionStore(session, sessionPath());
-    process.exit(0);
+    void (async () => {
+      await botManager.stopAll();
+      saveSessionStore(session, adminSessionPath);
+      process.exit(0);
+    })();
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  await loginWithRetries(bot);
-  await bot.start();
+  await loginWithRetries(bot, {
+    onQrUrl: (url) => log.info(`请扫码登录：${url}`),
+    onScanned: () => log.info("已扫码，确认登录…"),
+  });
+  await launchWeChatPollLoop(bot, { label: "admin-main" });
+  try {
+    await botManager.restoreUserInstances();
+  } catch (e) {
+    log.warn(`startup: child bot restore failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
+
+process.on("unhandledRejection", (reason) => {
+  log.error("unhandledRejection（进程保持运行）", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  log.error("uncaughtException（进程保持运行）", err);
+});
 
 bootstrap().catch((e) => {
   console.error(e);

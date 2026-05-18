@@ -3,11 +3,15 @@ import path from "node:path";
 import type { PeriodicJob } from "./types.js";
 import { isScriptPayload } from "./types.js";
 import { resolveScriptEntry } from "./paths.js";
-import { bumpNext, noteResult } from "./ops.js";
+import { bumpNext, noteResult } from "./state.js";
 import type { NotifyChannel } from "../../notify/channel.js";
+import { pushPeriodicJobMessage, resolveJobNotifyInstanceId } from "./wxPush.js";
 import { createLogger, redactSecrets } from "../../logger.js";
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
+import { wxParagraphsFromNewlines } from "../../util/wxRichText.js";
 import { drainRetryMessagesForUser, enqueueRetryMessage } from "./retryQueue.js";
+import { readInjectedEnvForUser } from "../../config/injectedEnv.js";
+import { periodicNodeExecutable } from "./jobScript.js";
 
 const log = createLogger("periodic-script");
 
@@ -27,19 +31,6 @@ function maxStdoutNotifyChars(): number {
   return Number.isFinite(v) && v > 500 ? Math.floor(v) : 4000;
 }
 
-function bubbleGapMs(): number {
-  const v = Number(process.env.PERIODIC_MESSAGE_GAP_MS?.trim());
-  return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 650;
-}
-
-function splitStdoutBubbles(stdoutText: string): string[] {
-  return stdoutText
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -49,37 +40,38 @@ function shouldRetryNotifyError(e: unknown): boolean {
   return /ret=-2|fetch failed|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(s);
 }
 
-async function notifyBubbleWithRetry(args: {
-  notify: NotifyChannel;
-  userId: string;
-  text: string;
-  retries: number;
-  baseBackoffMs: number;
-}): Promise<void> {
+async function pushJobTextWithRetry(job: PeriodicJob, text: string, retries: number, baseBackoffMs: number): Promise<void> {
   let lastErr: unknown;
-  for (let i = 0; i <= args.retries; i++) {
+  for (let i = 0; i <= retries; i++) {
     try {
-      await args.notify.notifyText({
-        userId: args.userId,
-        text: args.text,
-        intent: "info",
-        plain: true,
-      });
+      await pushPeriodicJobMessage(job, text, "periodic");
       return;
     } catch (e) {
       lastErr = e;
-      if (i >= args.retries || !shouldRetryNotifyError(e)) break;
-      await sleep(args.baseBackoffMs * (i + 1));
+      if (i >= retries || !shouldRetryNotifyError(e)) break;
+      await sleep(baseBackoffMs * (i + 1));
     }
   }
   throw lastErr;
+}
+
+async function pushJobStdoutWithRetry(
+  job: PeriodicJob,
+  text: string,
+  retries: number,
+  baseBackoffMs: number,
+): Promise<void> {
+  const cap = maxStdoutNotifyChars();
+  const formatted = wxParagraphsFromNewlines(text);
+  const body = formatted.length > cap ? `${formatted.slice(0, cap)}…` : formatted;
+  await pushJobTextWithRetry(job, body, retries, baseBackoffMs);
 }
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** 调度执行 Python 入口（cwd 为作业目录） */
+/** 调度执行 Node 入口（须先经 ensureScriptJobReady） */
 export async function executePeriodicScriptJob(
   job: PeriodicJob,
   notify?: NotifyChannel,
@@ -89,12 +81,18 @@ export async function executePeriodicScriptJob(
     if (job.kind === "schedule") await bumpNext(job.id);
     return { ok: false, errorSummary: "payload 非 script" };
   }
-  const entryAbs = resolveScriptEntry(job.id, job.payload.entryFile);
-  const py =
-    job.payload.pythonExe?.trim() ||
-    process.env.PERIODIC_PYTHON_CMD?.trim() ||
-    process.env.PYTHON_CMD?.trim() ||
-    "python";
+
+  let entryAbs: string;
+  try {
+    entryAbs = resolveScriptEntry(job.id, job.payload.entryFile);
+  } catch (e) {
+    const summary = (e instanceof Error ? e.message : String(e)).slice(0, 500);
+    await noteResult(job.id, false, summary);
+    if (job.kind === "schedule") await bumpNext(job.id);
+    return { ok: false, errorSummary: summary };
+  }
+
+  const node = periodicNodeExecutable(job);
   const cwd = path.dirname(entryAbs);
   const scriptName = path.basename(entryAbs);
   const timeout = parseScriptTimeoutMs();
@@ -102,8 +100,7 @@ export async function executePeriodicScriptJob(
 
   let result: PeriodicScriptRunResult = { ok: true };
   try {
-    if (notify) {
-      try {
+    try {
         const flushed = await drainRetryMessagesForUser({
           userId: job.notifyUserId,
           notify,
@@ -114,17 +111,15 @@ export async function executePeriodicScriptJob(
         if (flushed.sent > 0 || flushed.failed > 0) {
           log.info(`retry-queue drained job=${job.id} sent=${flushed.sent} failed=${flushed.failed}`);
         }
-      } catch (e) {
-        log.warn(`drain retry queue failed: ${errText(e)}`);
-      }
+    } catch (e) {
+      log.warn(`drain retry queue failed: ${errText(e)}`);
     }
 
     const env = {
       ...process.env,
-      PYTHONUTF8: "1",
-      PYTHONIOENCODING: "utf-8",
+      ...readInjectedEnvForUser(job.notifyUserId),
     };
-    const { stdout, stderr } = await execFilePromised(py, [scriptName], {
+    const { stdout, stderr } = await execFilePromised(node, [scriptName], {
       cwd,
       env,
       timeout,
@@ -142,51 +137,34 @@ export async function executePeriodicScriptJob(
       if (trimmed.length > 0) pushText = trimmed;
     }
 
-    const bubbles = pushText ? splitStdoutBubbles(pushText) : [];
-    if (notify) {
-      const cap = maxStdoutNotifyChars();
-      const gap = bubbleGapMs();
-      for (let i = 0; i < bubbles.length; i++) {
-        const raw = bubbles[i]!;
-        const text = raw.length > cap ? `${raw.slice(0, cap)}…` : raw;
-        try {
-          await notifyBubbleWithRetry({
-            notify,
-            userId: job.notifyUserId,
-            text: redactPathsForWx(text),
-            retries: 3,
-            baseBackoffMs: 1200,
-          });
-        } catch (e) {
-          const em = errText(e);
-          log.warn(`notify bubble failed job=${job.id} idx=${i + 1}/${bubbles.length}: ${em}`);
-          enqueueRetryMessage({
-            jobId: job.id,
-            userId: job.notifyUserId,
-            text: redactPathsForWx(text),
-            intent: "info",
-            plain: true,
-            lastError: em,
-          });
-        }
-        if (i < bubbles.length - 1 && gap > 0) {
-          await sleep(gap);
-        }
+    if (pushText) {
+      const text = redactPathsForWx(pushText);
+      try {
+        await pushJobStdoutWithRetry(job, text, 3, 1200);
+      } catch (e) {
+        const em = errText(e);
+        log.warn(`notify stdout failed job=${job.id}: ${em}`);
+        enqueueRetryMessage({
+          jobId: job.id,
+          userId: job.notifyUserId,
+          notifyInstanceId: resolveJobNotifyInstanceId(job),
+          text: wxParagraphsFromNewlines(text),
+          intent: "info",
+          plain: true,
+          lastError: em,
+        });
       }
     }
 
     const notifyOk = process.env.PERIODIC_NOTIFY_SUCCESS?.trim() === "1";
-    if (notifyOk && notify && trimmed.length === 0 && mode === "stdout_nonempty") {
+    if (notifyOk && trimmed.length === 0 && mode === "stdout_nonempty") {
       try {
-        await notify.notifyText({
-          userId: job.notifyUserId,
-          text: "定时脚本执行完成（stdout 为空）",
-          intent: "success",
-        });
+        await pushPeriodicJobMessage(job, "定时脚本执行完成（stdout 为空）", "success");
       } catch {
         enqueueRetryMessage({
           jobId: job.id,
           userId: job.notifyUserId,
+          notifyInstanceId: resolveJobNotifyInstanceId(job),
           text: "定时脚本执行完成（stdout 为空）",
           intent: "success",
           plain: false,

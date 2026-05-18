@@ -25,10 +25,10 @@ import {
 } from "../../plugins/codeProjects/runBuildSh.js";
 import { joinWxLines } from "../../util/wxRichText.js";
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
-import { requireAdminOrThrow } from "../../security/gate.js";
 import type { CodeAction } from "./keywords.js";
 import { codeCommandSpecs } from "./keywords.js";
 import { formatCommandHelp } from "../../framework/commands/helpText.js";
+import { isAdminVerified } from "../../security/adminAuth.js";
 
 export type CodeServiceCtx = {
   notify: NotifyChannel;
@@ -43,12 +43,20 @@ export async function executeCodeAction(
   action: CodeAction,
   rest: string,
 ): Promise<void> {
-  requireAdminOrThrow(msg.userId);
-  const uid = msg.userId;
-  const parts = rest.trim().split(/\s+/).filter(Boolean);
+  let uid = msg.userId;
+  let actionRest = rest;
+  try {
+    const parsed = resolveCodeTargetUser(msg.userId, rest);
+    uid = parsed.targetUserId;
+    actionRest = parsed.tail;
+  } catch (e) {
+    await ctx.notify.replyText(msg, e instanceof Error ? e.message : String(e), "error");
+    return;
+  }
+  const parts = actionRest.trim().split(/\s+/).filter(Boolean);
 
   if (action === "help") {
-    await ctx.notify.replyText(msg, formatCommandHelp("[CODE] managed projects + build.sh", codeCommandSpecs()), "help");
+    await ctx.notify.replyPlain(msg, formatCommandHelp("[代码] 项目管理与构建", codeCommandSpecs()));
     return;
   }
 
@@ -273,12 +281,10 @@ export async function executeCodeAction(
       cwd: target.localPath,
       traceId: `code-fix:${target.id}:${Date.now()}`,
       stream: {
-        shouldDedupeFinal: true,
         onChunk: async (text) => {
           await ctx.notify.replyText(msg, redactPathsForWx(text), "progress");
         },
       },
-      finalizeChatDedupe: true,
     });
     if (!res.ok) {
       await ctx.notify.replyText(msg, redactPathsForWx(res.message.slice(0, 400)), "error");
@@ -286,4 +292,19 @@ export async function executeCodeAction(
     }
     await ctx.notify.replyText(msg, "Fix completed.", "success");
   }
+}
+
+function resolveCodeTargetUser(callerUserId: string, rest: string): { targetUserId: string; tail: string } {
+  const normalized = rest.trim().replace(/\s+/g, " ");
+  if (!normalized) return { targetUserId: callerUserId, tail: "" };
+  const words = normalized.split(" ");
+  if ((words[0] ?? "").toLowerCase() !== "for") {
+    return { targetUserId: callerUserId, tail: normalized };
+  }
+  const target = words[1]?.trim() ?? "";
+  if (!target) throw new Error("Usage: /code <action> for <userId> ...");
+  if (!isAdminVerified(callerUserId)) {
+    throw new Error("仅已验证管理员可使用 for <userId> 跨用户操作");
+  }
+  return { targetUserId: target, tail: words.slice(2).join(" ").trim() };
 }

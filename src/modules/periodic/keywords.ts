@@ -11,15 +11,15 @@ export type PeriodicAction =
   | "run";
 
 const PERIODIC_KEYWORDS: Readonly<Record<PeriodicAction, readonly string[]>> = {
-  help: ["help"],
-  list: ["list"],
-  detail: ["detail"],
-  create: ["create"],
-  modify: ["modify"],
-  remove: ["remove"],
-  enable: ["enable"],
-  disable: ["disable"],
-  run: ["run"],
+  help: ["帮助", "help"],
+  list: ["列表", "list"],
+  detail: ["详情", "detail"],
+  create: ["创建", "create"],
+  modify: ["修改", "modify"],
+  remove: ["删除", "remove"],
+  enable: ["启用", "enable"],
+  disable: ["停用", "disable"],
+  run: ["执行", "run"],
 };
 
 const flat = new Map<string, PeriodicAction>();
@@ -41,20 +41,20 @@ export function periodicKeywords(): Readonly<Record<PeriodicAction, readonly str
 }
 
 const PERIODIC_COMMAND_SPECS: CommandSpec[] = [
-  { domain: "periodic", action: "help", usage: "/periodic help", summary: "show periodic module help" },
-  { domain: "periodic", action: "list", usage: "/periodic list", summary: "list your periodic jobs" },
-  { domain: "periodic", action: "detail", usage: "/periodic detail <ID> [path]", summary: "show job details" },
+  { domain: "periodic", action: "help", usage: "/周期 帮助", summary: "查看周期模块帮助" },
+  { domain: "periodic", action: "list", usage: "/周期 列表", summary: "查看周期任务列表" },
+  { domain: "periodic", action: "detail", usage: "/周期 详情 <ID> [path]", summary: "查看任务详情" },
   {
     domain: "periodic",
     action: "create",
-    usage: "/periodic create schedule|trigger ...",
-    summary: "create periodic job and scaffold script",
+    usage: "/周期 创建 schedule|trigger ...",
+    summary: "创建周期任务并生成脚本",
   },
-  { domain: "periodic", action: "modify", usage: "/periodic modify <ID> ...", summary: "modify periodic job" },
-  { domain: "periodic", action: "remove", usage: "/periodic remove <ID>", summary: "remove periodic job" },
-  { domain: "periodic", action: "enable", usage: "/periodic enable <ID>", summary: "enable periodic job" },
-  { domain: "periodic", action: "disable", usage: "/periodic disable <ID>", summary: "disable periodic job" },
-  { domain: "periodic", action: "run", usage: "/periodic run <ID>", summary: "run periodic job once" },
+  { domain: "periodic", action: "modify", usage: "/周期 修改 <ID> ...", summary: "修改周期任务" },
+  { domain: "periodic", action: "remove", usage: "/周期 删除 <ID>", summary: "删除周期任务" },
+  { domain: "periodic", action: "enable", usage: "/周期 启用 <ID>", summary: "启用周期任务" },
+  { domain: "periodic", action: "disable", usage: "/周期 停用 <ID>", summary: "停用周期任务" },
+  { domain: "periodic", action: "run", usage: "/周期 执行 <ID>", summary: "手动执行一次任务" },
 ];
 
 export function periodicCommandSpecs(): readonly CommandSpec[] {

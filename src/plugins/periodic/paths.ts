@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+/** 周期作业默认入口（相对作业目录） */
+export const SCRIPT_ENTRY = "run.mjs";
+
+const ALLOWED_ENTRY_EXT = new Set([".mjs", ".js", ".cjs"]);
 
 /** 每条任务作业目录：PERIODIC_JOB_ROOT/<jobId>/ */
 export function periodicJobRoot(): string {
@@ -35,16 +39,26 @@ export function safeRemoveJobWorkspace(jobId: string): void {
   }
 }
 
-/** 解析入口脚本绝对路径（须在作业目录内） */
+/** 解析入口脚本绝对路径（须在作业目录内，仅 .mjs/.js/.cjs） */
 export function resolveScriptEntry(jobId: string, entryFile: string): string {
   const dir = jobWorkspaceAbsolute(jobId);
-  const name = (entryFile || "run.py").replace(/\\/g, "/").split("/").pop() || "run.py";
+  const name =
+    (entryFile || SCRIPT_ENTRY).replace(/\\/g, "/").split("/").pop() || SCRIPT_ENTRY;
   if (name.includes("..") || path.isAbsolute(entryFile)) {
     throw new Error("非法入口文件名");
+  }
+  const ext = path.extname(name).toLowerCase();
+  if (!ALLOWED_ENTRY_EXT.has(ext)) {
+    throw new Error(`入口须为 .mjs / .js / .cjs，当前：${name}`);
   }
   const full = path.resolve(dir, name);
   if (!full.startsWith(dir + path.sep) && full !== dir) {
     throw new Error("入口路径越界");
+  }
+  if (!fs.existsSync(full)) {
+    throw new Error(
+      `作业入口不存在：${name}。请用 /周期 向导或 Agent 重新生成 Node 脚本（run.mjs）。`,
+    );
   }
   return full;
 }

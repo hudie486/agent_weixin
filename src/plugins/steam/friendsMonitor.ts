@@ -3,7 +3,6 @@ import path from "node:path";
 import { fetch, ProxyAgent, Agent, type Dispatcher } from "undici";
 import type { NotifyChannel } from "../../notify/channel.js";
 import { createLogger } from "../../logger.js";
-import { parseAdminIds } from "../../security/gate.js";
 
 const log = createLogger("steam-friends");
 
@@ -56,14 +55,7 @@ function monitorSteamId(): string | null {
 
 function notifyUserId(): string | null {
   const explicit = process.env.STEAM_MONITOR_NOTIFY_USER_ID?.trim();
-  if (explicit) return explicit;
-  const admins = parseAdminIds();
-  if (admins.size === 1) {
-    const id = [...admins][0]!;
-    log.info("STEAM_MONITOR_NOTIFY_USER_ID 未设置，使用 ADMIN_USER_IDS 中的唯一管理员");
-    return id;
-  }
-  return null;
+  return explicit || null;
 }
 
 function buildDispatcher(): Dispatcher {
@@ -227,7 +219,7 @@ export function startSteamFriendsMonitor(deps: SteamMonitorDeps): ReturnType<typ
   const uid = notifyUserId();
   if (!key || !sid || !uid) {
     log.debug(
-      "[Steam 插件] 好友监控未启动（非周期任务）：需 STEAM_WEB_API_KEY、STEAM_MONITOR_STEAM_ID；接收方可为 STEAM_MONITOR_NOTIFY_USER_ID，或 ADMIN_USER_IDS 仅 1 人时自动使用该 ID",
+      "[Steam 插件] 好友监控未启动（非周期任务）：需 STEAM_WEB_API_KEY、STEAM_MONITOR_STEAM_ID、STEAM_MONITOR_NOTIFY_USER_ID",
     );
     return null;
   }

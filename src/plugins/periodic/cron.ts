@@ -3,6 +3,31 @@ import type { DailyShanghaiClock, PeriodicJob } from "./types.js";
 
 export const PERIODIC_CRON_TZ = "Asia/Shanghai";
 
+/** 严格晚于 afterMs 的下一触发时刻（毫秒 epoch）。 */
+export function nextCronRunMs(expr: string, tzName: string, afterMs: number): number {
+  const tz = tzName.trim() || PERIODIC_CRON_TZ;
+  const trimmed = expr.trim().replace(/\s+/g, " ");
+  const interval = CronExpressionParser.parse(trimmed, { tz, currentDate: new Date(afterMs) });
+  return interval.next().toDate().getTime();
+}
+
+export function cronTzName(job: { cronTimeZone?: string | null }): string {
+  return (job.cronTimeZone ?? PERIODIC_CRON_TZ).trim() || PERIODIC_CRON_TZ;
+}
+
+/** 无 cronExpression 的旧 schedule 任务：推导 CRON 并写入。 */
+export function migrateScheduleJobCron(j: PeriodicJob): void {
+  if (j.kind !== "schedule") return;
+  if (j.cronExpression?.trim()) return;
+
+  let expr = legacyFieldsToCronExpr(j);
+  if (!expr) expr = "0 * * * *";
+
+  j.cronExpression = expr;
+  if (!j.cronTimeZone?.trim()) j.cronTimeZone = PERIODIC_CRON_TZ;
+  if (j.intervalMs == null) j.intervalMs = 60_000;
+}
+
 /** 校验标准 5 段 CRON（分 时 日 月 周），按给定时区解析 */
 export function validateCronExpressionFive(expr: string, tz = PERIODIC_CRON_TZ): string | null {
   const t = expr.trim().replace(/\s+/g, " ");
@@ -18,7 +43,6 @@ export function validateCronExpressionFive(expr: string, tz = PERIODIC_CRON_TZ):
   }
 }
 
-/** 从旧任务字段推导 5 段 CRON（仅展示/补全，持久化由 Python bump 时写入） */
 export function legacyFieldsToCronExpr(job: PeriodicJob): string | null {
   if (job.kind !== "schedule") return null;
   const sm = (job.scheduleMode ?? "").toLowerCase();
@@ -50,7 +74,6 @@ export function effectiveCronTimeZone(job: PeriodicJob): string {
   return (job.cronTimeZone ?? PERIODIC_CRON_TZ).trim() || PERIODIC_CRON_TZ;
 }
 
-/** 向导内简短说明（不含文末「请回复」类提示） */
 export function wizardCronHintLines(): string[] {
   return [
     "CRON 为 5 段，依次：分 时 日 月 周；。",

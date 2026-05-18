@@ -6,7 +6,7 @@ import type { IncomingMessage } from "@wechatbot/wechatbot";
 import type { MenuOptionDef, WizardCollected, WizardDef } from "../wizard/types.js";
 import { registerWizard } from "../wizard/registry.js";
 import { dispatchWizardCommandWithDefaults } from "../framework/wizard/adapters.js";
-import { readInjectedEnv } from "./injectedEnv.js";
+import { readInjectedEnvForUser } from "./injectedEnv.js";
 
 function validateEnvKeyFormat(s: string): string | null {
   const t = s.trim();
@@ -16,12 +16,7 @@ function validateEnvKeyFormat(s: string): string | null {
 }
 
 function validateEnvKeyExists(s: string): string | null {
-  const fmt = validateEnvKeyFormat(s);
-  if (fmt) return fmt;
-  const k = s.trim();
-  const env = readInjectedEnv();
-  if (!(k in env)) return "无此键，请先「列出已注入的键」确认名称";
-  return null;
+  return validateEnvKeyFormat(s);
 }
 
 function validateEnvVal(s: string): string | null {
@@ -29,31 +24,53 @@ function validateEnvVal(s: string): string | null {
   return null;
 }
 
+function validateNonEmpty(s: string): string | null {
+  return s.trim() ? null : "不能为空";
+}
+
+function resolveWizardTargetUserId(msg: IncomingMessage, collected: WizardCollected): string {
+  const t = collected._targetUserId?.trim();
+  return t || msg.userId;
+}
+
+function withTargetAfterAction(
+  action: string,
+  rest: string,
+  msg: IncomingMessage,
+  collected: WizardCollected,
+): string {
+  const target = resolveWizardTargetUserId(msg, collected);
+  const trimmed = rest.trim();
+  if (target === msg.userId) return trimmed ? `${action} ${trimmed}` : action;
+  return trimmed ? `${action} for ${target} ${trimmed}` : `${action} for ${target}`;
+}
+
 function buildEnvTerminalSub({
   collected,
+  msg,
 }: {
   collected: WizardCollected;
   msg: IncomingMessage;
 }): string | undefined {
   const flow = collected._flow;
   if (flow === "help") return "help";
-  if (flow === "list") return "list";
+  if (flow === "list") return withTargetAfterAction("list", "", msg, collected);
   if (flow === "set") {
     const k = collected.envKey?.trim() ?? "";
     const v = collected.envVal ?? "";
     if (!k || !v.trim()) return undefined;
-    return `set ${k} ${v}`;
+    return withTargetAfterAction("set", `${k} ${v}`, msg, collected);
   }
   if (flow === "delete") {
     const k = collected.delKey?.trim() ?? "";
     if (!k) return undefined;
-    return `delete ${k}`;
+    return withTargetAfterAction("delete", k, msg, collected);
   }
   if (flow === "modify") {
     const k = collected.modEnvKey?.trim() ?? "";
     const v = collected.modEnvVal ?? "";
     if (!k || !v.trim()) return undefined;
-    return `set ${k} ${v}`;
+    return withTargetAfterAction("set", `${k} ${v}`, msg, collected);
   }
   return undefined;
 }
@@ -63,11 +80,37 @@ export function registerInjectedEnvWizard(): void {
   const def: WizardDef = {
     id: "env",
     title: "注入环境变量（帮助、列表、新增、修改、删除）",
-    requireAdmin: true,
-    rootStepId: "env_main",
+    requireAdmin: false,
+    rootStepId: "env_scope",
     commandDomain: "env",
     buildTerminalSub: buildEnvTerminalSub,
     steps: {
+      env_scope: {
+        kind: "menu",
+        prompt: "请选择操作目标用户：",
+        options: [
+          {
+            label: "当前用户（默认）",
+            help: "后续命令不带 for <userId>",
+            example: "1",
+            nextStepId: "env_main",
+            setCollected: { _targetUserId: "" },
+          },
+          {
+            label: "指定用户（管理员）",
+            help: "后续命令统一追加 for <userId>",
+            example: "2",
+            nextStepId: "env_target_user",
+          },
+        ],
+      },
+      env_target_user: {
+        kind: "freeText",
+        prompt: "请输入目标 userId（后续步骤统一按该用户执行）：",
+        field: "_targetUserId",
+        validate: validateNonEmpty,
+        nextStepId: "env_main",
+      },
       env_main: {
         kind: "menu",
         prompt: "请选择：",
@@ -133,8 +176,8 @@ export function registerInjectedEnvWizard(): void {
       env_mod_pick: {
         kind: "dynamicMenu",
         prompt: "请选择要修改的**已有键名**（将再输入新值）：",
-        loadOptions: ({ ctx: _ctx, msg: _msg, collected: _c }) => {
-          const env = readInjectedEnv();
+        loadOptions: ({ msg, collected }) => {
+          const env = readInjectedEnvForUser(resolveWizardTargetUserId(msg, collected));
           const keys = Object.keys(env).sort();
           const MAX = 8;
           const out: MenuOptionDef[] = [];

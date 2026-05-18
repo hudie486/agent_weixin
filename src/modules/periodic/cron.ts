@@ -4,4 +4,4 @@ export {
   wizardCronHintLines,
   effectiveCronExpression,
   effectiveCronTimeZone,
-} from "../../plugins/periodic/cronResolve.js";
+} from "../../plugins/periodic/cron.js";

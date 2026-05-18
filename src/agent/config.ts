@@ -29,10 +29,6 @@ export type AgentResult =
   | {
       ok: true;
       text: string;
-      /** 流式进度已覆盖完整终稿时置位，调用方可跳过再发一条「终稿」 */
-      streamDeliveredFullReply?: boolean;
-      /** stream-json 下合并后的助手文本（用于与终稿去重对照） */
-      streamAssistantPlain?: string;
       rawStdout: string;
       rawStderr: string;
       code: number;
@@ -83,20 +79,15 @@ export function loadAgentConfig(): AgentConfig {
   const invokeMode = (process.env.AGENT_INVOKE_MODE?.trim() || "args") as AgentConfig["invokeMode"];
   const outputMode = (process.env.AGENT_OUTPUT_MODE?.trim() || "text") as AgentConfig["outputMode"];
   const timeoutMs = Number(process.env.AGENT_TIMEOUT_MS || "120000");
-  let args = parseJsonArrayEnv("AGENT_ARGS_JSON", [
-    "-f",
-    "--print",
-    "--output-format",
-    "stream-json",
-    "--stream-partial-output",
-  ]);
+  let args = parseJsonArrayEnv("AGENT_ARGS_JSON", ["-f", "--print", "--output-format", "stream-json"]);
+  args = args.filter((a) => a.trim() !== "--stream-partial-output");
   const forceStream = (process.env.AGENT_FORCE_STREAM_JSON?.trim() ?? "1") !== "0";
   if (forceStream) {
     const joined = args.map((a) => a.trim()).join(" ");
     const hasStream =
       /\b--output-format\b\s+stream-json\b/i.test(joined) || /\b--output-format=stream-json\b/i.test(joined);
     if (!hasStream) {
-      args = ["-f", "--print", "--output-format", "stream-json", "--stream-partial-output", ...args];
+      args = ["-f", "--print", "--output-format", "stream-json", ...args];
     }
     if (!args.some((a) => a.trim() === "--print" || a.trim() === "-p")) {
       args = ["--print", ...args];

@@ -11,11 +11,12 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback;
 }
 
-function parseIdleTimeoutMs(fallback: number): number {
+/** Agent 子进程无 stdout/stderr 输出的空闲超时（默认 10 分钟）；与 AGENT_TIMEOUT_MS 无关 */
+export function defaultAgentIdleTimeoutMs(): number {
   const raw = process.env.AGENT_IDLE_TIMEOUT_MS?.trim();
   if (raw === "0" || raw?.toLowerCase() === "off") return Number.POSITIVE_INFINITY;
   const v = Number(raw);
-  return Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback;
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : 600_000;
 }
 
 function findNextDelimiterIndex(text: string, from: number): number {
@@ -26,48 +27,6 @@ function findNextDelimiterIndex(text: string, from: number): number {
     if (i >= 0 && (best < 0 || i < best)) best = i;
   }
   return best;
-}
-
-function normalizeForContain(s: string): string {
-  return s.replaceAll("\r", "").replace(/\s+/g, " ").trim();
-}
-
-function commonPrefixLen(a: string, b: string): number {
-  const n = Math.min(a.length, b.length);
-  let i = 0;
-  for (; i < n; i++) {
-    if (a.charCodeAt(i) !== b.charCodeAt(i)) break;
-  }
-  return i;
-}
-
-function mergeStreamText(existing: string, incoming: string): string {
-  const cur = existing ?? "";
-  const inc = incoming ?? "";
-  if (!inc) return cur;
-  if (!cur) return inc;
-  const curN = normalizeForContain(cur);
-  const incN = normalizeForContain(inc);
-  if (incN && curN && incN.includes(curN)) return inc;
-  if (curN && incN && curN.includes(incN)) return cur;
-  const cpl = commonPrefixLen(curN, incN);
-  if (cpl >= 16) {
-    const ratio = curN.length > 0 ? incN.length / curN.length : 1;
-    if (ratio >= 0.85) return inc;
-  }
-  const anchorLen = Math.min(24, incN.length);
-  if (anchorLen >= 12) {
-    const anchor = incN.slice(0, anchorLen);
-    const hit = curN.indexOf(anchor);
-    if (hit > 0) return inc;
-  }
-  const maxCheck = Math.min(cur.length, inc.length, 4000);
-  for (let k = maxCheck; k >= 1; k--) {
-    if (cur.endsWith(inc.slice(0, k))) {
-      return cur + inc.slice(k);
-    }
-  }
-  return cur + inc;
 }
 
 export function extractJsonObjectsFromText(text: string): string[] {
@@ -107,7 +66,8 @@ export function extractJsonObjectsFromText(text: string): string[] {
   return out;
 }
 
-function extractAssistantTextFromStreamEvent(ev: StreamJsonEvent): string | null {
+/** 仅解析 `type === "assistant"` 行中的文本片段 */
+export function extractAssistantTextFromStreamEvent(ev: StreamJsonEvent): string | null {
   if (ev?.type !== "assistant") return null;
   const content = ev?.message?.content;
   if (!Array.isArray(content) || content.length === 0) return null;
@@ -116,10 +76,6 @@ function extractAssistantTextFromStreamEvent(ev: StreamJsonEvent): string | null
     .filter((s) => s.length > 0);
   if (pieces.length === 0) return null;
   return pieces.join("");
-}
-
-function isResultEvent(ev: StreamJsonEvent): boolean {
-  return ev?.type === "result";
 }
 
 function agentArgsUseStreamJson(args: string[]): boolean {
@@ -154,8 +110,6 @@ export function appendWeChatHint(prompt: string): string {
 
 export type StreamCallbacks = {
   onChunk: (text: string) => void | Promise<void>;
-  /** If last progress equals final text tail, skip duplicate final notify */
-  shouldDedupeFinal?: boolean;
 };
 
 export async function runAgentStreaming(params: {
@@ -169,21 +123,19 @@ export async function runAgentStreaming(params: {
   maxWallMs?: number;
   segmentAfterChars?: number;
   progressMinIntervalMs?: number;
-  finalizeChatDedupe?: boolean;
 }): Promise<AgentResult> {
   const startedAt = Date.now();
   const fullPrompt = appendWeChatHint(params.prompt);
   const { command, finalArgs, needsStdin } = buildAgentSpawnArgs(fullPrompt, params.cfg);
   const cfg = params.cfg;
   const spawnCwd = params.cwd?.trim() || process.env.AGENT_CWD?.trim() || undefined;
-  const idleTimeoutMs = params.idleTimeoutMs ?? parseIdleTimeoutMs(cfg.timeoutMs);
+  const idleTimeoutMs = params.idleTimeoutMs ?? defaultAgentIdleTimeoutMs();
   const maxWallMs = params.maxWallMs ?? parsePositiveIntEnv("AGENT_MAX_RUNTIME_MS", 15 * 60 * 1000);
   const useStreamJson =
     (process.env.WX_AGENT_STREAM_JSON?.trim() ?? "1") !== "0" && agentArgsUseStreamJson(cfg.args);
   const segmentAfterChars = params.segmentAfterChars ?? parsePositiveIntEnv("WX_AGENT_STREAM_SEGMENT_AFTER_CHARS", 50);
   const baseInterval = parsePositiveIntEnv("WX_AGENT_PROGRESS_MIN_INTERVAL_MS", 2500);
   const interval = Math.max(1500, params.progressMinIntervalMs ?? baseInterval);
-  const finalizeDedupe = params.finalizeChatDedupe ?? (params.traceId?.startsWith("chat:") ?? false);
 
   return await new Promise((resolve) => {
     let child: ReturnType<typeof spawn>;
@@ -211,11 +163,11 @@ export async function runAgentStreaming(params: {
     const outChunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
     let stdoutLineBuf = "";
-    let streamFullText = "";
+    /** 最新一条 assistant 快照全文（stream-json 无 partial 时每条 assistant 为累积终稿） */
+    let assistantFullText = "";
     let streamSentCursor = 0;
     const streamPending: string[] = [];
     let lastSent = 0;
-    let lastProgress = "";
     const tick = params.stream ? setInterval(() => void trySendProgress(), interval) : null;
     let settled = false;
     let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -257,60 +209,57 @@ export async function runAgentStreaming(params: {
 
     const trySendProgress = async (): Promise<void> => {
       if (!params.stream) return;
-      let progress: string | null = null;
-      if (useStreamJson) {
-        progress = streamPending.shift() ?? null;
-      } else {
-        const out = Buffer.concat(outChunks).toString("utf-8");
-        const lines = out.replaceAll("\r", "").trim().split("\n").map((s) => s.trim()).filter(Boolean);
-        if (lines.length === 0) return;
-        const last = lines[lines.length - 1] ?? "";
-        if (
-          last.startsWith("{") &&
-          /"type"\s*:\s*"(system|user|assistant|result)"/.test(last)
-        ) {
-          return;
-        }
-        progress = last.length > 200 ? last.slice(0, 199) + "…" : last;
-        if (progress === lastProgress) return;
-      }
+      const progress = streamPending.shift() ?? null;
       if (!progress) return;
       const now = Date.now();
-      if (now - lastSent < interval) return;
+      if (now - lastSent < interval) {
+        streamPending.unshift(progress);
+        return;
+      }
       lastSent = now;
-      lastProgress = progress;
       bumpIdle();
       const maxLen = parsePositiveIntEnv("WX_AGENT_PROGRESS_MAX_CHARS", 320);
       const text = progress.length > maxLen ? progress.slice(0, maxLen - 1).trimEnd() + "…" : progress;
-      await params.stream.onChunk(text);
+      try {
+        await params.stream.onChunk(text);
+      } catch (e) {
+        // 微信 iLink 限流等不应拖垮 Agent 子进程收尾
+        streamPending.length = 0;
+        return;
+      }
     };
 
-    const streamMaybeEnqueueSegments = (): void => {
+    const enqueueSegmentsFromCursor = (): void => {
       const threshold =
         Number.isFinite(segmentAfterChars) && segmentAfterChars > 0 ? segmentAfterChars : 50;
       for (;;) {
-        if (streamFullText.length - streamSentCursor <= threshold) return;
+        if (assistantFullText.length - streamSentCursor <= threshold) return;
         const searchFrom = streamSentCursor + threshold;
-        const idx = findNextDelimiterIndex(streamFullText, searchFrom);
+        const idx = findNextDelimiterIndex(assistantFullText, searchFrom);
         if (idx < 0) return;
-        const delim = streamFullText[idx] ?? "";
+        const delim = assistantFullText[idx] ?? "";
         const end = delim === "\n" ? idx : idx + 1;
-        const seg = streamFullText.slice(streamSentCursor, end).trim();
+        const seg = assistantFullText.slice(streamSentCursor, end).trim();
         streamSentCursor = end;
         if (seg) streamPending.push(seg);
       }
     };
 
-    const streamIngestAssistantText = (incoming: string): void => {
+    const ingestAssistantSnapshot = (incoming: string): void => {
       const text = incoming.replaceAll("\r", "");
       if (!text) return;
-      streamFullText = mergeStreamText(streamFullText, text);
-      streamMaybeEnqueueSegments();
+      if (text.length < assistantFullText.length && assistantFullText.startsWith(text)) return;
+      if (!text.startsWith(assistantFullText) && assistantFullText.length > 0) {
+        streamSentCursor = 0;
+        streamPending.length = 0;
+      }
+      assistantFullText = text;
+      enqueueSegmentsFromCursor();
     };
 
-    const streamFlushRemainder = (): void => {
-      const rest = streamFullText.slice(streamSentCursor).trim();
-      streamSentCursor = streamFullText.length;
+    const flushAssistantRemainder = (): void => {
+      const rest = assistantFullText.slice(streamSentCursor).trim();
+      streamSentCursor = assistantFullText.length;
       if (rest) streamPending.push(rest);
     };
 
@@ -319,25 +268,24 @@ export async function runAgentStreaming(params: {
     child.stdout!.on("data", (d) => {
       bumpIdle();
       outChunks.push(Buffer.from(d));
-      if (useStreamJson) {
-        stdoutLineBuf += Buffer.from(d).toString("utf-8");
-        for (;;) {
-          const nl = stdoutLineBuf.indexOf("\n");
-          if (nl < 0) break;
-          const line = stdoutLineBuf.slice(0, nl).trim();
-          stdoutLineBuf = stdoutLineBuf.slice(nl + 1);
-          if (!line) continue;
-          const objs = extractJsonObjectsFromText(line);
-          if (objs.length === 0) continue;
-          for (const s of objs) {
-            try {
-              const ev = JSON.parse(s) as StreamJsonEvent;
-              const t = extractAssistantTextFromStreamEvent(ev);
-              if (t) streamIngestAssistantText(t);
-              if (isResultEvent(ev)) streamFlushRemainder();
-            } catch {
-              /* ignore */
-            }
+      if (!useStreamJson) return;
+      stdoutLineBuf += Buffer.from(d).toString("utf-8");
+      for (;;) {
+        const nl = stdoutLineBuf.indexOf("\n");
+        if (nl < 0) break;
+        const line = stdoutLineBuf.slice(0, nl).trim();
+        stdoutLineBuf = stdoutLineBuf.slice(nl + 1);
+        if (!line) continue;
+        const objs = extractJsonObjectsFromText(line);
+        if (objs.length === 0) continue;
+        for (const s of objs) {
+          try {
+            const ev = JSON.parse(s) as StreamJsonEvent;
+            const t = extractAssistantTextFromStreamEvent(ev);
+            if (t) ingestAssistantSnapshot(t);
+            if (ev?.type === "result") flushAssistantRemainder();
+          } catch {
+            /* ignore */
           }
         }
       }
@@ -354,16 +302,14 @@ export async function runAgentStreaming(params: {
       const rawStderr = Buffer.concat(errChunks).toString("utf-8");
       const elapsedMs = Date.now() - startedAt;
       void (async () => {
+        try {
         if (useStreamJson && params.stream) {
-          streamFlushRemainder();
+          flushAssistantRemainder();
           while (streamPending.length > 0) {
             await trySendProgress();
           }
         }
-        let text = useStreamJson ? streamFullText.trim() : extractTextFromStdout(cfg, rawStdout);
-        if (finalizeDedupe && text.length >= 12) {
-          text = simpleFinalizeDedupe(text);
-        }
+        const text = useStreamJson ? assistantFullText.trim() : extractTextFromStdout(cfg, rawStdout);
         if (killReason === "idle") {
           finish({
             ok: false,
@@ -391,40 +337,9 @@ export async function runAgentStreaming(params: {
           return;
         }
         if (code === 0) {
-          let streamDeliveredFullReply = false;
-          if (params.stream && useStreamJson && text) {
-            const fn = normalizeForContain(text);
-            const sn = normalizeForContain(streamFullText);
-            if (fn.length >= 8 && sn.length >= 8) {
-              if (fn === sn) streamDeliveredFullReply = true;
-              else {
-                const shorter = fn.length <= sn.length ? fn : sn;
-                const longer = fn.length > sn.length ? fn : sn;
-                if (longer.includes(shorter) && shorter.length / longer.length >= 0.85) {
-                  streamDeliveredFullReply = true;
-                }
-              }
-            }
-            if (
-              !streamDeliveredFullReply &&
-              params.stream.shouldDedupeFinal &&
-              lastProgress
-            ) {
-              const lp = normalizeForContain(lastProgress);
-              const ft = normalizeForContain(text);
-              if (
-                ft === lp ||
-                (ft.length > 20 && ft.endsWith(lp.slice(-Math.min(80, lp.length))))
-              ) {
-                streamDeliveredFullReply = true;
-              }
-            }
-          }
           finish({
             ok: true,
             text,
-            streamDeliveredFullReply,
-            streamAssistantPlain: useStreamJson ? text : undefined,
             rawStdout,
             rawStderr,
             code: 0,
@@ -443,6 +358,18 @@ export async function runAgentStreaming(params: {
           signal,
           elapsedMs,
         });
+        } catch {
+          finish({
+            ok: false,
+            errorType: "spawn",
+            message: "流式进度推送异常，已中止收尾",
+            rawStdout,
+            rawStderr,
+            code: code ?? -1,
+            signal,
+            elapsedMs,
+          });
+        }
       })();
     });
 
@@ -470,95 +397,4 @@ export async function runAgentStreaming(params: {
       /* ignore */
     }
   });
-}
-
-function normalizeDedupeKey(s: string): string {
-  return s.replaceAll("\r", "").replace(/\s+/g, "").trim();
-}
-
-function splitIntoRoughSentences(para: string): string[] {
-  const chunks = para.split(/\n+/).map((x) => x.trim()).filter(Boolean);
-  const out: string[] = [];
-  for (const chunk of chunks) {
-    let buf = "";
-    for (let i = 0; i < chunk.length; i++) {
-      const ch = chunk[i]!;
-      buf += ch;
-      if (/[。！？!?]/.test(ch)) {
-        const t = buf.trim();
-        if (t) out.push(t);
-        buf = "";
-      }
-    }
-    const tail = buf.trim();
-    if (tail) out.push(tail);
-  }
-  return out;
-}
-
-function dedupeParagraphBody(para: string): string {
-  const parts = splitIntoRoughSentences(para);
-  const kept: string[] = [];
-  for (const sent of parts) {
-    const sk = normalizeDedupeKey(sent);
-    if (sk.length < 4) {
-      kept.push(sent);
-      continue;
-    }
-    let skip = false;
-    for (let i = 0; i < kept.length; i++) {
-      const k = kept[i]!;
-      const kk = normalizeDedupeKey(k);
-      if (sk === kk) {
-        skip = true;
-        break;
-      }
-      if (sk.length >= 10 && kk.includes(sk)) {
-        skip = true;
-        break;
-      }
-      if (kk.length >= 10 && sk.includes(kk)) {
-        kept[i] = sent;
-        skip = true;
-        break;
-      }
-    }
-    if (!skip) kept.push(sent);
-  }
-  return kept.join("");
-}
-
-function simpleFinalizeDedupe(raw: string): string {
-  const rawTrim = raw.replaceAll("\r", "").trim();
-  if (rawTrim.length < 12) return rawTrim;
-  const blocks = rawTrim.split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
-  const mergedBlocks: string[] = [];
-  for (const b of blocks) {
-    const body = dedupeParagraphBody(b);
-    const bk = normalizeDedupeKey(body);
-    if (bk.length < 8) {
-      mergedBlocks.push(body);
-      continue;
-    }
-    let absorbed = false;
-    for (let i = 0; i < mergedBlocks.length; i++) {
-      const ex = mergedBlocks[i]!;
-      const ek = normalizeDedupeKey(ex);
-      if (bk === ek) {
-        absorbed = true;
-        break;
-      }
-      if (ek.includes(bk) && ek.length >= bk.length) {
-        absorbed = true;
-        break;
-      }
-      if (bk.includes(ek) && bk.length > ek.length) {
-        mergedBlocks[i] = body;
-        absorbed = true;
-        break;
-      }
-    }
-    if (!absorbed) mergedBlocks.push(body);
-  }
-  return mergedBlocks.join("\n\n").trim();
 }

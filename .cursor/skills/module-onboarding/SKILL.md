@@ -120,6 +120,26 @@ Before finishing:
 - [ ] Help text is generated from command spec/keyword table (or shares same source).
 - [ ] `npm run build` and `npm test` pass.
 
+## Multi-user Extension Rules
+
+When adding or refactoring domains in this repository, follow these multi-user constraints:
+
+- All user-facing data must be tenant-scoped by `userId` unless the feature is explicitly global.
+- Keep `code` / `periodic` / `env` data isolated per user.
+- Cross-user operations must be explicit via command payload (for example: `for <userId>`), never implicit context switching inside service logic.
+- Admin-only features must require two checks:
+  1. user is admin identity;
+  2. user has active admin verification session (password verified in current process runtime).
+- Admin verification state is in-memory session only (cleared on process restart), while password source may be env or persisted auth config.
+- Normal users may call admins, but cannot call other normal users directly.
+- Admin may proactively notify a target user by explicit user ID.
+
+Recommended layering for multi-user auth:
+
+`service -> security/adminAuth -> userStore/configStore`
+
+Avoid direct cross-domain imports under `src/modules/*`; shared auth helpers should live under `src/security/*`.
+
 ## Suggested Reviews for This Repository
 
 When touching `periodic`, `code`, `env`:

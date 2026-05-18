@@ -9,17 +9,19 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js",
+    "start": "node dist/src/main.js",
     "test": "node --experimental-vm-modules node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {
     "@wechatbot/wechatbot": "^2.1.1",
     "cron-parser": "^5.4.0",
     "dotenv": "^16.4.5",
+    "qrcode": "^1.5.4",
     "undici": "^6.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/qrcode": "^1.5.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

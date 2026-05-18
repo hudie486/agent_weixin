@@ -116,10 +116,9 @@ export async function handleWizardMessage(
 
   if (isPendingExpired(rawPending)) {
     setPending(state, msg.userId, null, statePath);
-    await ctx.notify.replyText(
+    await ctx.notify.replyPlain(
       msg,
       withWizardReplyPrefix("向导已超时结束，请重新发「向导」或「菜单」进入。"),
-      "info",
     );
     return true;
   }
@@ -127,7 +126,7 @@ export async function handleWizardMessage(
   const t = normInput(text);
   if (isExitMessage(t)) {
     setPending(state, msg.userId, null, statePath);
-    await ctx.notify.replyText(msg, withWizardReplyPrefix("已退出。"), "success");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix("已退出。"));
     return true;
   }
 
@@ -139,20 +138,20 @@ export async function handleWizardMessage(
   const def = getWizard(rawPending.wizardId);
   if (!def) {
     setPending(state, msg.userId, null, statePath);
-    await ctx.notify.replyText(msg, withWizardReplyPrefix("向导数据异常，已重置。"), "error");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix("向导数据异常，已重置。"));
     return true;
   }
 
   if (!userMayUseAdminWizard(msg.userId, def)) {
     setPending(state, msg.userId, null, statePath);
-    await ctx.notify.replyText(msg, withWizardReplyPrefix("无权使用该向导。"), "error");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix("无权使用该向导。"));
     return true;
   }
 
   const step = def.steps[rawPending.stepId];
   if (!step) {
     setPending(state, msg.userId, null, statePath);
-    await ctx.notify.replyText(msg, withWizardReplyPrefix("向导步骤异常，已重置。"), "error");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix("向导步骤异常，已重置。"));
     return true;
   }
 
@@ -188,18 +187,17 @@ async function handleRootPick(
   const total = defs.length + 1;
   const choice = parseMenuChoice(text, total);
   if (!choice) {
-    await ctx.notify.replyText(
+    await ctx.notify.replyPlain(
       msg,
       withWizardReplyPrefix(
         joinWxLines(["未识别输入，请回复主菜单上的序号。", "", renderRootMenu(msg.userId)]),
       ),
-      "warn",
     );
     return;
   }
   if (choice.index === defs.length) {
     if (choice.rest) {
-      await ctx.notify.replyText(
+      await ctx.notify.replyPlain(
         msg,
         withWizardReplyPrefix(
           joinWxLines([
@@ -208,12 +206,11 @@ async function handleRootPick(
             renderRootMenu(msg.userId),
           ]),
         ),
-        "warn",
       );
       return;
     }
     setPending(state, msg.userId, null, statePath);
-    await ctx.notify.replyText(msg, withWizardReplyPrefix("已退出。"), "success");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix("已退出。"));
     return;
   }
   const target = defs[choice.index]!;
@@ -245,12 +242,11 @@ async function handleDynamicMenuStep(
     setPending(state, msg.userId, p0, statePath);
   }
   if (!options.length) {
-    await ctx.notify.replyText(
+    await ctx.notify.replyPlain(
       msg,
       withWizardReplyPrefix(
         joinWxLines(["当前没有可选项，本步已结束。请重新发「向导」进入。"]),
       ),
-      "info",
     );
     setPending(state, msg.userId, null, statePath);
     return;
@@ -279,17 +275,16 @@ async function handleMenuStep(
   const choice = parseMenuChoice(text, totalSlots);
   if (!choice) {
     const body = fromDynamic ? formatOptionsList(step.prompt, step.options) : formatMenuStep(step);
-    await ctx.notify.replyText(
+    await ctx.notify.replyPlain(
       msg,
       withWizardReplyPrefix(joinWxLines(["未识别输入，请按菜单回复序号（可与参数同行）。", "", body])),
-      "warn",
     );
     return;
   }
   if (choice.index === nOpts) {
     if (choice.rest) {
       const body = fromDynamic ? formatOptionsList(step.prompt, step.options) : formatMenuStep(step);
-      await ctx.notify.replyText(
+      await ctx.notify.replyPlain(
         msg,
         withWizardReplyPrefix(
           joinWxLines([
@@ -298,12 +293,11 @@ async function handleMenuStep(
             body,
           ]),
         ),
-        "warn",
       );
       return;
     }
     setPending(state, msg.userId, null, statePath);
-    await ctx.notify.replyText(msg, withWizardReplyPrefix("已退出。"), "success");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix("已退出。"));
     return;
   }
   const opt = step.options[choice.index]!;
@@ -314,7 +308,7 @@ async function handleMenuStep(
     const err = ft.validate?.(choice.rest) ?? null;
     if (err) {
       const body = fromDynamic ? formatOptionsList(step.prompt, step.options) : formatMenuStep(step);
-      await ctx.notify.replyText(msg, withWizardReplyPrefix(joinWxLines([err, "", body])), "warn");
+      await ctx.notify.replyPlain(msg, withWizardReplyPrefix(joinWxLines([err, "", body])));
       return;
     }
     merged[ft.field] = choice.rest;
@@ -349,7 +343,7 @@ async function handleFreeTextStep(
   const exitPick = parseMenuChoice(text, exitSlot);
   if (exitPick && exitPick.index === exitSlot - 1) {
     if (exitPick.rest) {
-      await ctx.notify.replyText(
+      await ctx.notify.replyPlain(
         msg,
         withWizardReplyPrefix(
           joinWxLines([
@@ -358,18 +352,17 @@ async function handleFreeTextStep(
             renderFreeText(step),
           ]),
         ),
-        "warn",
       );
       return;
     }
     setPending(state, msg.userId, null, statePath);
-    await ctx.notify.replyText(msg, withWizardReplyPrefix("已退出。"), "success");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix("已退出。"));
     return;
   }
 
   const err = step.validate?.(text) ?? null;
   if (err) {
-    await ctx.notify.replyText(msg, withWizardReplyPrefix(joinWxLines([err, "", renderFreeText(step)])), "warn");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix(joinWxLines([err, "", renderFreeText(step)])));
     return;
   }
   const merged = { ...pending.collected, [step.field]: text };
@@ -413,7 +406,7 @@ async function runTerminal(
     await def.onTerminal({ ctx: wctx, msg, collected });
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);
-    await ctx.notify.replyText(msg, withWizardReplyPrefix(`向导执行失败：${m.slice(0, 500)}`), "error");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix(`向导执行失败：${m.slice(0, 500)}`));
   }
 }
 
@@ -428,7 +421,7 @@ async function sendStepPrompt(
 ): Promise<void> {
   const step = def.steps[stepId];
   if (!step) {
-    await ctx.notify.replyText(msg, withWizardReplyPrefix("向导步骤缺失。"), "error");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix("向导步骤缺失。"));
     return;
   }
   if (step.kind === "menu") {
@@ -438,12 +431,11 @@ async function sendStepPrompt(
   if (step.kind === "dynamicMenu") {
     const opts = await step.loadOptions({ ctx, msg, collected: getPendingRaw(state, userId)!.collected });
     if (!opts.length) {
-      await ctx.notify.replyText(
+      await ctx.notify.replyPlain(
         msg,
         withWizardReplyPrefix(
           joinWxLines(["当前没有可列出的记录，本向导步骤无法继续。", "请重新发「向导」或先创建数据后再试。"]),
         ),
-        "info",
       );
       setPending(state, userId, null, statePath);
       return;
@@ -460,6 +452,6 @@ async function sendStepPrompt(
     return;
   }
   if (step.kind === "terminal") {
-    await ctx.notify.replyText(msg, withWizardReplyPrefix("向导配置错误：不应直接展示 terminal 步。"), "error");
+    await ctx.notify.replyPlain(msg, withWizardReplyPrefix("向导配置错误：不应直接展示 terminal 步。"));
   }
 }

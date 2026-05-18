@@ -19,6 +19,7 @@ export function withWizardReplyPrefix(text: string): string {
 export function wrapNotifyForWizard(notify: NotifyChannel): NotifyChannel {
   return {
     resetSeq: () => notify.resetSeq(),
+    markUserInbound: (userId) => notify.markUserInbound(userId),
     // 向导内避免 tone emoji 与 🧭 前缀叠加，统一按 plain 输出。
     replyText: (msg, text, _intent) => notify.replyPlain(msg, withWizardReplyPrefix(text)),
     replyPlain: (msg, text) => notify.replyPlain(msg, withWizardReplyPrefix(text)),

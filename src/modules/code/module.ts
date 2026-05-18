@@ -9,7 +9,7 @@ export async function executeCodeCommand(
 ): Promise<void> {
   const ok = await executeCodeCommandSub(ctx, msg, sub);
   if (!ok) {
-    await ctx.notify.replyText(msg, "Unknown subcommand, use /code help", "warn");
+    await ctx.notify.replyText(msg, "未知子命令，请使用 /代码 帮助", "warn");
   }
 }
 

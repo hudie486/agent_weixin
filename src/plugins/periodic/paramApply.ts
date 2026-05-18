@@ -1,4 +1,4 @@
-import { patchJobJson } from "./ops.js";
+import { patchJobJson } from "./state.js";
 import type { DeliveryMode, PeriodicJob } from "./types.js";
 import { isScriptPayload } from "./types.js";
 

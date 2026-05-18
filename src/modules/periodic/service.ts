@@ -1,12 +1,19 @@
 import type { IncomingMessage } from "@wechatbot/wechatbot";
 import type { AgentConfig } from "../../agent/index.js";
 import type { NotifyChannel } from "../../notify/channel.js";
-import { requireAdminOrThrow } from "../../security/gate.js";
-import { addJobJson, listJobsState, removeJob, setEnabled } from "../../plugins/periodic/ops.js";
-import { formatJobDetail, formatJobListCompact } from "../../plugins/periodic/formatJobs.js";
-import { executePeriodicJob, executePeriodicModifyJob } from "../../plugins/periodic/runner.js";
-import { runScriptJobScaffold } from "../../plugins/periodic/scaffold.js";
-import type { DeliveryMode, PeriodicJob } from "../../plugins/periodic/types.js";
+import {
+  addJobJson,
+  executePeriodicJob,
+  executePeriodicModifyJob,
+  formatJobDetail,
+  formatJobListCompact,
+  listJobsState,
+  removeJob,
+  runScriptJobScaffold,
+  setEnabled,
+  type DeliveryMode,
+  type PeriodicJob,
+} from "../../plugins/periodic/index.js";
 import {
   patchPeriodicCronExpression,
   patchPeriodicDeliveryMode,
@@ -14,10 +21,12 @@ import {
 } from "../../plugins/periodic/paramApply.js";
 import { joinWxLines } from "../../util/wxRichText.js";
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
+import { sanitizeWeChatAgentText } from "../../util/wxAgentReplySanitize.js";
 import { PERIODIC_CRON_TZ, validateCronExpressionFive } from "./cron.js";
 import type { PeriodicAction } from "./keywords.js";
 import { periodicCommandSpecs } from "./keywords.js";
 import { formatCommandHelp } from "../../framework/commands/helpText.js";
+import { isAdminVerified } from "../../security/adminAuth.js";
 
 type ParsedCreate =
   | {
@@ -38,6 +47,7 @@ type ParsedCreate =
 type PeriodicServiceCtx = {
   notify: NotifyChannel;
   agentCfg: AgentConfig;
+  instanceId?: string;
 };
 
 function normalizeShortLabel(raw: string): string | undefined {
@@ -93,16 +103,25 @@ export async function executePeriodicAction(
   action: PeriodicAction,
   rest: string,
 ): Promise<void> {
-  const uid = msg.userId;
-  const parts = rest.trim().split(/\s+/).filter(Boolean);
+  let targetUserId = msg.userId;
+  let actionRest = rest;
+  try {
+    const parsed = resolvePeriodicTargetUser(msg.userId, rest);
+    targetUserId = parsed.targetUserId;
+    actionRest = parsed.tail;
+  } catch (e) {
+    await ctx.notify.replyText(msg, e instanceof Error ? e.message : String(e), "error");
+    return;
+  }
+  const parts = actionRest.trim().split(/\s+/).filter(Boolean);
 
   if (action === "help") {
-    await ctx.notify.replyText(msg, formatCommandHelp("[PERIODIC] schedule/trigger jobs", periodicCommandSpecs()), "help");
+    await ctx.notify.replyPlain(msg, formatCommandHelp("[周期] 定时与触发任务", periodicCommandSpecs()));
     return;
   }
   if (action === "list") {
     const st = await listJobsState();
-    const mine = st.jobs.filter((j) => j.notifyUserId === uid);
+    const mine = st.jobs.filter((j) => j.notifyUserId === targetUserId);
     await ctx.notify.replyPlain(msg, formatJobListCompact(mine));
     return;
   }
@@ -114,7 +133,7 @@ export async function executePeriodicAction(
     }
     const st = await listJobsState();
     const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || job.notifyUserId !== uid) {
+    if (!job || job.notifyUserId !== targetUserId) {
       await ctx.notify.replyText(msg, "Job not found or permission denied", "error");
       return;
     }
@@ -123,8 +142,7 @@ export async function executePeriodicAction(
     return;
   }
   if (action === "create") {
-    requireAdminOrThrow(uid);
-    const parsed = parsePeriodicCreate(rest);
+    const parsed = parsePeriodicCreate(actionRest);
     if (!parsed) {
       await ctx.notify.replyText(
         msg,
@@ -138,11 +156,12 @@ export async function executePeriodicAction(
       return;
     }
     const body: Record<string, unknown> = {
-      notifyUserId: uid,
+      notifyUserId: targetUserId,
+      notifyInstanceId: ctx.instanceId ?? "admin-main",
       kind: parsed.kind,
       userPrompt: parsed.description,
       prompt: parsed.description,
-      payload: { type: "script", entryFile: "run.py", deliveryMode: parsed.deliveryMode },
+      payload: { type: "script", entryFile: "run.mjs", deliveryMode: parsed.deliveryMode },
       generationStatus: "pending",
     };
     if (parsed.shortName) body.shortName = parsed.shortName;
@@ -166,26 +185,30 @@ export async function executePeriodicAction(
       await ctx.notify.replyText(msg, "Create failed: missing job id", "error");
       return;
     }
-    await ctx.notify.replyText(msg, "Job created, generating run.py...", "info");
-    const sc = await runScriptJobScaffold({
-      jobId,
-      userInstruction: parsed.description,
-      agentCfg: ctx.agentCfg,
-      onStatus: async (t) => {
-        await ctx.notify.replyText(msg, redactPathsForWx(t), "progress");
-      },
-      stream: {
-        shouldDedupeFinal: true,
-        onChunk: async (chunk) => {
-          await ctx.notify.replyText(msg, redactPathsForWx(chunk), "progress");
+    await ctx.notify.replyText(msg, "任务已创建，正在后台生成 run.mjs（定时调度不受影响）…", "info");
+    void (async () => {
+      const sc = await runScriptJobScaffold({
+        jobId,
+        userInstruction: parsed.description,
+        agentCfg: ctx.agentCfg,
+        onStatus: async (t) => {
+          await ctx.notify.replyText(msg, redactPathsForWx(t), "progress");
         },
-      },
-    }).catch((e) => ({ ok: false as const, message: e instanceof Error ? e.message : String(e) }));
-    await ctx.notify.replyText(msg, sc.ok ? sc.message : `Generate failed: ${sc.message}`, sc.ok ? "success" : "error");
+        stream: {
+          onChunk: async (chunk) => {
+            await ctx.notify.replyText(msg, redactPathsForWx(chunk), "progress");
+          },
+        },
+      }).catch((e) => ({ ok: false as const, message: e instanceof Error ? e.message : String(e) }));
+      await ctx.notify.replyText(
+        msg,
+        sc.ok ? sc.message : `Generate failed: ${sc.message}`,
+        sc.ok ? "success" : "error",
+      );
+    })();
     return;
   }
   if (action === "modify") {
-    requireAdminOrThrow(uid);
     const id = parts[0]?.trim();
     if (!id) {
       await ctx.notify.replyText(msg, "Usage: /periodic modify <ID> <mode...>", "warn");
@@ -193,7 +216,7 @@ export async function executePeriodicAction(
     }
     const st = await listJobsState();
     const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || job.notifyUserId !== uid) {
+    if (!job || job.notifyUserId !== targetUserId) {
       await ctx.notify.replyText(msg, "Job not found or permission denied", "error");
       return;
     }
@@ -235,17 +258,35 @@ export async function executePeriodicAction(
       return;
     }
     const instruction = parts.slice(mode === "agent" ? 2 : 1).join(" ").trim();
+    const progressMs = Number(process.env.PERIODIC_MODIFY_PROGRESS_MS?.trim());
+    const progressMinIntervalMs =
+      Number.isFinite(progressMs) && progressMs >= 3000 ? Math.floor(progressMs) : 10_000;
+    let sawProgress = false;
     const r = await executePeriodicModifyJob(job as PeriodicJob, instruction, ctx.agentCfg, {
-      shouldDedupeFinal: true,
-      onChunk: async (chunk) => {
-        await ctx.notify.replyText(msg, redactPathsForWx(chunk), "progress");
+      progressMinIntervalMs,
+      stream: {
+        onChunk: async (chunk) => {
+          sawProgress = true;
+          const safe = sanitizeWeChatAgentText(redactPathsForWx(chunk));
+          await ctx.notify.replyText(msg, safe, "progress");
+        },
       },
-    }).catch((e) => ({ ok: false as const, message: e instanceof Error ? e.message : String(e) }));
-    await ctx.notify.replyText(msg, r.ok ? r.message || "Done" : r.message, r.ok ? "success" : "error");
+    }).catch((e) => ({
+      ok: false as const,
+      message: e instanceof Error ? e.message : String(e),
+    }));
+    if (r.ok) {
+      if (sawProgress) {
+        await ctx.notify.replyText(msg, "✅ 周期任务脚本已更新完成。", "success");
+      } else {
+        await ctx.notify.replyText(msg, r.message || "Done", "success");
+      }
+    } else {
+      await ctx.notify.replyText(msg, r.message, "error");
+    }
     return;
   }
   if (action === "remove") {
-    requireAdminOrThrow(uid);
     const id = parts[0]?.trim();
     if (!id) {
       await ctx.notify.replyText(msg, "Usage: /periodic remove <ID>", "warn");
@@ -253,7 +294,7 @@ export async function executePeriodicAction(
     }
     const st = await listJobsState();
     const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || job.notifyUserId !== uid) {
+    if (!job || job.notifyUserId !== targetUserId) {
       await ctx.notify.replyText(msg, "Job not found or permission denied", "error");
       return;
     }
@@ -262,7 +303,6 @@ export async function executePeriodicAction(
     return;
   }
   if (action === "enable" || action === "disable") {
-    requireAdminOrThrow(uid);
     const id = parts[0]?.trim();
     if (!id) {
       await ctx.notify.replyText(msg, `Usage: /periodic ${action} <ID>`, "warn");
@@ -270,7 +310,7 @@ export async function executePeriodicAction(
     }
     const st = await listJobsState();
     const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || job.notifyUserId !== uid) {
+    if (!job || job.notifyUserId !== targetUserId) {
       await ctx.notify.replyText(msg, "Job not found", "error");
       return;
     }
@@ -279,7 +319,6 @@ export async function executePeriodicAction(
     return;
   }
   if (action === "run") {
-    requireAdminOrThrow(uid);
     const id = parts[0]?.trim();
     if (!id) {
       await ctx.notify.replyText(msg, "Usage: /periodic run <ID>", "warn");
@@ -287,7 +326,7 @@ export async function executePeriodicAction(
     }
     const st = await listJobsState();
     const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || job.notifyUserId !== uid) {
+    if (!job || job.notifyUserId !== targetUserId) {
       await ctx.notify.replyText(msg, "Job not found", "error");
       return;
     }
@@ -301,4 +340,19 @@ export async function executePeriodicAction(
     }
     await ctx.notify.replyText(msg, `执行失败：${redactPathsForWx(out.errorSummary.slice(0, 350))}`, "error");
   }
+}
+
+function resolvePeriodicTargetUser(callerUserId: string, rest: string): { targetUserId: string; tail: string } {
+  const normalized = rest.trim().replace(/\s+/g, " ");
+  if (!normalized) return { targetUserId: callerUserId, tail: "" };
+  const words = normalized.split(" ");
+  if ((words[0] ?? "").toLowerCase() !== "for") {
+    return { targetUserId: callerUserId, tail: normalized };
+  }
+  const target = words[1]?.trim() ?? "";
+  if (!target) throw new Error("Usage: /periodic <action> for <userId> ...");
+  if (!isAdminVerified(callerUserId)) {
+    throw new Error("仅已验证管理员可使用 for <userId> 跨用户操作");
+  }
+  return { targetUserId: target, tail: words.slice(2).join(" ").trim() };
 }

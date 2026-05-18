@@ -16,6 +16,20 @@ export function joinWxLines(rows: string[]): string {
   return rows.map((r) => (r.endsWith("\n") ? r : `${r.trimEnd()}\n`)).join("\n");
 }
 
+/**
+ * 微信单条文本内：单行 `\n` 常被客户端压成空格。
+ * 将 stdout/多行正文按行拆成段落，段间用 `\n\n` 连接（与周期列表等一致）。
+ */
+export function wxParagraphsFromNewlines(text: string): string {
+  const lines = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (lines.length <= 1) return lines[0] ?? text.replace(/\r/g, "").trim();
+  return joinWxParagraphs(lines);
+}
+
 /** 所有发往微信的文本最后走一遍：去掉 `\r`，缺省时在末尾补 `\n` */
 export function finalizeWxOutbound(text: string): string {
   const t = text.replace(/\r/g, "");

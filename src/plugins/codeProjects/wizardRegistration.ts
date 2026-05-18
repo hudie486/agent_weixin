@@ -26,37 +26,55 @@ function validateGlob(s: string): string | null {
   return null;
 }
 
+function resolveWizardTargetUserId(msg: IncomingMessage, collected: WizardCollected): string {
+  const t = collected._targetUserId?.trim();
+  return t || msg.userId;
+}
+
+function withTargetAfterAction(
+  action: string,
+  rest: string,
+  msg: IncomingMessage,
+  collected: WizardCollected,
+): string {
+  const target = resolveWizardTargetUserId(msg, collected);
+  const trimmed = rest.trim();
+  if (target === msg.userId) return trimmed ? `${action} ${trimmed}` : action;
+  return trimmed ? `${action} for ${target} ${trimmed}` : `${action} for ${target}`;
+}
+
 function buildCodeTerminalSub({
   collected,
+  msg,
 }: {
   collected: WizardCollected;
   msg: IncomingMessage;
 }): string | undefined {
   const flow = collected._flow;
-  if (flow === "list") return "list";
+  if (flow === "list") return withTargetAfterAction("list", "", msg, collected);
   if (flow === "add") {
     const al = collected.alias?.trim() ?? "";
     const p = collected.path?.trim() ?? "";
     if (!al || !p) return undefined;
-    return `add ${al} ${p}`;
+    return withTargetAfterAction("add", `${al} ${p}`, msg, collected);
   }
   const al = collected.codeAlias?.trim() ?? "";
-  if (flow === "compile_project") return al ? `compile ${al}` : undefined;
-  if (flow === "view_project") return al ? `config ${al}` : undefined;
+  if (flow === "compile_project") return al ? withTargetAfterAction("compile", al, msg, collected) : undefined;
+  if (flow === "view_project") return al ? withTargetAfterAction("config", al, msg, collected) : undefined;
   if (flow === "param_glob") {
     if (!al) return undefined;
     const g = collected.editGlob?.trim() ?? "";
     if (!g) return undefined;
-    return `config ${al} 产物 ${g}`;
+    return withTargetAfterAction("config", `${al} 产物 ${g}`, msg, collected);
   }
   if (flow === "param_name") {
     if (!al) return undefined;
     const n = collected.editSendName?.trim() ?? "";
     if (!n) return undefined;
-    return `config ${al} 产物名 ${n}`;
+    return withTargetAfterAction("config", `${al} 产物名 ${n}`, msg, collected);
   }
-  if (flow === "param_clearglob") return al ? `config ${al} 清除 产物` : undefined;
-  if (flow === "param_default") return al ? `default ${al}` : undefined;
+  if (flow === "param_clearglob") return al ? withTargetAfterAction("config", `${al} 清除 产物`, msg, collected) : undefined;
+  if (flow === "param_default") return al ? withTargetAfterAction("default", al, msg, collected) : undefined;
   return undefined;
 }
 
@@ -65,11 +83,37 @@ export function registerCodeProjectsWizard(): void {
   const def: WizardDef = {
     id: "code",
     title: "代码项目（添加、选择项目后编译与配置）",
-    requireAdmin: true,
-    rootStepId: "code_menu",
+    requireAdmin: false,
+    rootStepId: "code_scope",
     commandDomain: "code",
     buildTerminalSub: buildCodeTerminalSub,
     steps: {
+      code_scope: {
+        kind: "menu",
+        prompt: "请选择操作目标用户：",
+        options: [
+          {
+            label: "当前用户（默认）",
+            help: "后续命令不带 for <userId>",
+            example: "1",
+            nextStepId: "code_menu",
+            setCollected: { _targetUserId: "" },
+          },
+          {
+            label: "指定用户（管理员）",
+            help: "后续命令统一追加 for <userId>",
+            example: "2",
+            nextStepId: "code_target_user",
+          },
+        ],
+      },
+      code_target_user: {
+        kind: "freeText",
+        prompt: "请输入目标 userId（后续步骤统一按该用户执行）：",
+        field: "_targetUserId",
+        validate: validateNonEmpty,
+        nextStepId: "code_menu",
+      },
       code_menu: {
         kind: "menu",
         prompt: "请选择：",
@@ -100,9 +144,9 @@ export function registerCodeProjectsWizard(): void {
       code_project_pick: {
         kind: "dynamicMenu",
         prompt: "请选择项目（按已登记别名）：",
-        loadOptions: ({ ctx: _ctx, msg, collected: _c }) => {
+        loadOptions: ({ ctx: _ctx, msg, collected }) => {
           const st = loadCodeProjectsState();
-          const mine = listUserProjects(st, msg.userId);
+          const mine = listUserProjects(st, resolveWizardTargetUserId(msg, collected));
           const MAX = 8;
           const out: MenuOptionDef[] = [];
           if (!mine.length) {

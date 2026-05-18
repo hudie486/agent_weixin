@@ -2,6 +2,7 @@ import type { IncomingMessage } from "@wechatbot/wechatbot";
 import type { NotifyChannel } from "../notify/channel.js";
 import type { AgentConfig } from "../agent/index.js";
 import type { SessionStoreData } from "../session/store.js";
+import type { BotManager } from "../multiBot/manager.js";
 
 /**
  * 新功能接入向导：在**该功能所属目录**下新增 `wizardRegistration.ts`（或等价命名），
@@ -17,6 +18,8 @@ export type WizardHandlerCtx = {
   agentCfg: AgentConfig;
   session: SessionStoreData;
   sessionPath: string;
+  botManager?: BotManager;
+  instanceId?: string;
 };
 
 export type WizardCollected = Record<string, string>;
@@ -72,7 +75,7 @@ export type WizardTerminalStep = {
 
 export type WizardStep = WizardMenuStep | WizardDynamicMenuStep | WizardFreeTextStep | WizardTerminalStep;
 
-export type WizardCommandDomain = "code" | "periodic" | "env";
+export type WizardCommandDomain = "code" | "periodic" | "env" | "user";
 
 export type WizardTerminalFn = (args: {
   ctx: WizardHandlerCtx;
@@ -83,7 +86,7 @@ export type WizardTerminalFn = (args: {
 export type WizardDef = {
   id: string;
   title: string;
-  /** true 时仅管理员可见（ADMIN_USER_IDS 非空时校验） */
+  /** true 时仅管理员会话可见 */
   requireAdmin: boolean;
   rootStepId: string;
   steps: Record<string, WizardStep>;

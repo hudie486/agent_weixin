@@ -5,7 +5,7 @@ import { resolvePeriodicAction, type PeriodicAction } from "./keywords.js";
 import { executePeriodicAction } from "./service.js";
 
 export async function executePeriodicCommandSub(
-  ctx: Pick<FrameworkContext, "notify" | "agentCfg">,
+  ctx: Pick<FrameworkContext, "notify" | "agentCfg" | "instanceId">,
   msg: IncomingMessage,
   sub: string,
 ): Promise<boolean> {
@@ -34,7 +34,7 @@ export function registerPeriodicCommands(registry: CommandRegistry): void {
       handle: async (ctx, input) => {
         if (!input.msg) return;
         await executePeriodicAction(
-          { notify: ctx.notify, agentCfg: ctx.agentCfg },
+          { notify: ctx.notify, agentCfg: ctx.agentCfg, instanceId: ctx.instanceId },
           input.msg,
           action,
           input.sub,

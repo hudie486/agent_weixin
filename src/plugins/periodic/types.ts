@@ -5,10 +5,10 @@ export type DeliveryMode = "stdout_nonempty" | "every_run";
 
 export type ScriptPayload = {
   type: "script";
-  /** 相对作业目录，默认 run.py */
+  /** 相对作业目录，默认 run.mjs */
   entryFile: string;
   deliveryMode: DeliveryMode;
-  pythonExe?: string | null;
+  nodeExe?: string | null;
 };
 
 /** 历史 JSON 中可能出现的旧 shape，仅用于兼容读取 */
@@ -30,6 +30,8 @@ export type PeriodicJob = {
   id: string;
   kind: PeriodicJobKind;
   notifyUserId: string;
+  /** 推送使用的 Bot 实例（多 Bot 时由创建方写入） */
+  notifyInstanceId?: string | null;
   enabled: boolean;
   intervalMs: number | null;
   nextRunAt: number | null;

@@ -10,5 +10,10 @@ export function redactPathsForWx(text: string): string {
   // UNC \\server\share\...
   s = s.replace(/\\\\[^\s]+/g, "[路径]");
   s = s.replace(/\/(?:Users|home|var|usr|opt|mnt|tmp|data)\/[^\s]+/gi, "[路径]");
-  return s.replace(/\s+/g, " ").trim();
+  // 仅折叠行内空白，保留换行（\s+ 会把 \n 压成空格，破坏多行推送）
+  return s
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ +\n/g, "\n")
+    .replace(/\n +/g, "\n")
+    .trim();
 }

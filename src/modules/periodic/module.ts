@@ -1,27 +1,27 @@
 import type { IncomingMessage } from "@wechatbot/wechatbot";
-import { startPeriodicScheduler } from "../../plugins/periodic/sched.js";
+import { startPeriodicScheduler } from "../../plugins/periodic/index.js";
 import type { FrameworkContext, ModuleCommand, ModuleHandler } from "../../framework/contracts/module.js";
 import { executePeriodicCommandSub } from "./commands.js";
 
 export async function executePeriodicCommand(
-  ctx: Pick<FrameworkContext, "notify" | "agentCfg">,
+  ctx: Pick<FrameworkContext, "notify" | "agentCfg" | "instanceId">,
   msg: IncomingMessage,
   sub: string,
 ): Promise<void> {
   const ok = await executePeriodicCommandSub(ctx, msg, sub);
   if (!ok) {
-    await ctx.notify.replyText(msg, "Unknown subcommand, use /periodic help", "warn");
+    await ctx.notify.replyText(msg, "未知子命令，请使用 /周期 帮助", "warn");
   }
 }
 
 export function startPeriodicModuleScheduler(deps: {
   agentCfg: FrameworkContext["agentCfg"];
-  queue: { run<T>(key: string, fn: () => Promise<T>): Promise<T> };
+  periodicQueue: { run<T>(key: string, fn: () => Promise<T>): Promise<T> };
   notify: FrameworkContext["notify"];
 }): ReturnType<typeof setInterval> {
   return startPeriodicScheduler({
     agentCfg: deps.agentCfg,
-    queue: deps.queue,
+    periodicQueue: deps.periodicQueue,
     notify: deps.notify,
   });
 }

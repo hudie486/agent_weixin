@@ -1,15 +1,17 @@
 import { createLogger } from "../../logger.js";
-import { listJobsState, setMissedEstimate } from "./ops.js";
+import { listJobsState, setMissedEstimate } from "./state.js";
 import { executePeriodicJob } from "./runner.js";
 import type { AgentConfig } from "../../agent/index.js";
 import type { NotifyChannel } from "../../notify/channel.js";
+import { scheduleLegacyPythonMigrations } from "./jobScript.js";
 
 const log = createLogger("periodic-scheduler");
 const running = new Set<string>();
+let legacyMigrateBooted = false;
 
 export type SchedulerDeps = {
   agentCfg: AgentConfig;
-  queue: { run<T>(key: string, fn: () => Promise<T>): Promise<T> };
+  periodicQueue: { run<T>(key: string, fn: () => Promise<T>): Promise<T> };
   notify: NotifyChannel;
 };
 
@@ -41,7 +43,7 @@ export function startPeriodicScheduler(deps: SchedulerDeps): ReturnType<typeof s
           }
 
           running.add(job.id);
-          void deps.queue.run(job.notifyUserId, async () => {
+          void deps.periodicQueue.run(`job:${job.id}`, async () => {
             log.info(`running scheduled job ${job.id}`);
             try {
               await executePeriodicJob(job, deps.agentCfg, deps.notify);
@@ -57,6 +59,21 @@ export function startPeriodicScheduler(deps: SchedulerDeps): ReturnType<typeof s
       log.warn(`scan failed ${e instanceof Error ? e.message : String(e)}`);
     }
   };
+
+  void (async () => {
+    if (legacyMigrateBooted) return;
+    legacyMigrateBooted = true;
+    try {
+      const state = await listJobsState();
+      scheduleLegacyPythonMigrations({
+        jobs: state.jobs,
+        agentCfg: deps.agentCfg,
+        queue: deps.periodicQueue,
+      });
+    } catch (e) {
+      log.warn(`legacy Python migrate boot: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  })();
 
   void tick();
   return setInterval(() => void tick(), interval);

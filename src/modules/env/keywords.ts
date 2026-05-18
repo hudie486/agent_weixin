@@ -2,10 +2,10 @@ import type { CommandSpec } from "../../framework/commands/contracts.js";
 export type EnvAction = "help" | "list" | "set" | "delete";
 
 const ENV_KEYWORDS: Readonly<Record<EnvAction, readonly string[]>> = {
-  help: ["help"],
-  list: ["list"],
-  set: ["set"],
-  delete: ["delete"],
+  help: ["帮助", "help"],
+  list: ["列表", "list"],
+  set: ["设置", "set"],
+  delete: ["删除", "delete"],
 };
 
 const flat = new Map<string, EnvAction>();
@@ -27,10 +27,10 @@ export function envKeywords(): Readonly<Record<EnvAction, readonly string[]>> {
 }
 
 const ENV_COMMAND_SPECS: CommandSpec[] = [
-  { domain: "env", action: "help", usage: "/env help", summary: "show env command help" },
-  { domain: "env", action: "list", usage: "/env list", summary: "list injected keys (masked)" },
-  { domain: "env", action: "set", usage: "/env set <KEY> <value...>", summary: "set injected env value" },
-  { domain: "env", action: "delete", usage: "/env delete <KEY>", summary: "delete injected env key" },
+  { domain: "env", action: "help", usage: "/环境 帮助", summary: "查看环境模块帮助" },
+  { domain: "env", action: "list", usage: "/环境 列表", summary: "查看注入键列表（值脱敏）" },
+  { domain: "env", action: "set", usage: "/环境 设置 <KEY> <value...>", summary: "设置注入环境变量" },
+  { domain: "env", action: "delete", usage: "/环境 删除 <KEY>", summary: "删除注入环境变量" },
 ];
 
 export function envCommandSpecs(): readonly CommandSpec[] {

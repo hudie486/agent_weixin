@@ -1,11 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { NotifyChannel } from "../../notify/channel.js";
+import { wxSessionRegistry } from "../../wxSession/registry.js";
 
 export type RetryQueueItem = {
   id: string;
   jobId: string;
   userId: string;
+  notifyInstanceId?: string;
   text: string;
   intent: "info" | "error" | "success";
   plain: boolean;
@@ -58,6 +60,7 @@ function uid(): string {
 export function enqueueRetryMessage(args: {
   jobId: string;
   userId: string;
+  notifyInstanceId?: string;
   text: string;
   intent?: "info" | "error" | "success";
   plain?: boolean;
@@ -69,6 +72,7 @@ export function enqueueRetryMessage(args: {
     id: uid(),
     jobId: args.jobId,
     userId: args.userId,
+    notifyInstanceId: args.notifyInstanceId?.trim() || undefined,
     text: args.text,
     intent: args.intent ?? "info",
     plain: args.plain ?? true,
@@ -80,9 +84,39 @@ export function enqueueRetryMessage(args: {
   saveState(state);
 }
 
+async function deliverRetryItem(
+  item: RetryQueueItem,
+  notify?: NotifyChannel,
+): Promise<void> {
+  let instanceId = item.notifyInstanceId?.trim();
+  if (!instanceId) {
+    try {
+      instanceId = wxSessionRegistry().resolveInstanceId(item.userId);
+    } catch {
+      instanceId = undefined;
+    }
+  }
+  const hub = instanceId ? wxSessionRegistry().getHub(instanceId) : undefined;
+  if (hub) {
+    await hub.send(
+      item.userId,
+      { text: item.text, intent: item.intent, plain: item.plain },
+      `periodic-retry/${item.jobId}`,
+    );
+    return;
+  }
+  if (!notify) throw new Error(`微信会话未注册，且无 NotifyChannel 回退`);
+  await notify.notifyText({
+    userId: item.userId,
+    text: item.text,
+    intent: item.intent,
+    plain: item.plain,
+  });
+}
+
 export async function drainRetryMessagesForUser(args: {
   userId: string;
-  notify: NotifyChannel;
+  notify?: NotifyChannel;
   maxItems?: number;
   retryPerItem?: number;
   backoffMs?: number;
@@ -109,12 +143,7 @@ export async function drainRetryMessagesForUser(args: {
     let errMsg = item.lastError;
     for (let i = 0; i <= retryPerItem; i++) {
       try {
-        await args.notify.notifyText({
-          userId: item.userId,
-          text: item.text,
-          intent: item.intent,
-          plain: item.plain,
-        });
+        await deliverRetryItem(item, args.notify);
         ok = true;
         break;
       } catch (e) {

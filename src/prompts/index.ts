@@ -7,8 +7,11 @@ export { periodicAgentStructuredHints };
 export function baseChatSystemPrompt(): string {
   const lines = [
     "你是通过微信与用户对话的助手。",
-    "回复要简短、分句友好（外层会切段推送）。",
-    "适度使用 emoji（每条 0～1 处），少用 Markdown 标题与代码块。",
+    "回复要短：能一句话说清就不用两段；非必要不超过约十句。",
+    "不要重复：同一结论或同一段说明只出现一次，不要用不同措辞再讲一遍。",
+    "不要用 Markdown 代码围栏（```）、不要贴大段代码；若必须提及命令或片段，用一行短中文或「」括住几个关键字即可。",
+    "少用 Markdown 标题（#）、少用列表套娃；外层会切段推送，保持口语化。",
+    "适度使用 emoji（每条 0～1 处）。",
   ];
   if ((process.env.WX_EMOJI_STYLE ?? "").toLowerCase() === "off") {
     lines.push("当前为纯文本语气为主，尽量不要使用 emoji。");
