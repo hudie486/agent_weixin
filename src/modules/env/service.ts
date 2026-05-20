@@ -1,5 +1,4 @@
-import type { IncomingMessage } from "@wechatbot/wechatbot";
-import type { NotifyChannel } from "../../notify/channel.js";
+import type { FrameworkContext } from "../../framework/contracts/module.js";
 import { joinWxLines } from "../../util/wxRichText.js";
 import {
   readInjectedEnvForUser,
@@ -16,26 +15,26 @@ function maskValue(v: string): string {
 }
 
 export async function executeEnvAction(
-  notify: NotifyChannel,
-  msg: IncomingMessage,
+  ctx: FrameworkContext,
   action: EnvAction,
   rest: string,
 ): Promise<void> {
-  let targetUserId = msg.userId;
+  const notify = ctx.notify;
+  let targetUserId = ctx.userId;
   let tail = rest;
   try {
-    const resolved = resolveTargetUser(msg.userId, rest);
+    const resolved = resolveTargetUser(ctx.userId, rest);
     targetUserId = resolved.targetUserId;
     tail = resolved.tail;
   } catch (e) {
-    await notify.replyText(msg, e instanceof Error ? e.message : String(e), "error");
+    await notify.replyText(ctx.envelope ?? ctx.userId, e instanceof Error ? e.message : String(e), "error");
     return;
   }
   const parts = tail.trim().split(/\s+/).filter(Boolean);
 
   if (action === "help") {
     await notify.replyPlain(
-      msg,
+      ctx.envelope ?? ctx.userId,
       formatCommandHelp("[环境] 用户级环境变量", envCommandSpecs()),
     );
     return;
@@ -45,13 +44,13 @@ export async function executeEnvAction(
     const env = readInjectedEnvForUser(targetUserId);
     const keys = Object.keys(env).sort();
     if (keys.length === 0) {
-      await notify.replyText(msg, `No injected env keys${targetUserId === msg.userId ? "" : ` for ${targetUserId}`}.`, "info");
+      await notify.replyText(ctx.envelope ?? ctx.userId, `No injected env keys${targetUserId === ctx.userId ? "" : ` for ${targetUserId}`}.`, "info");
       return;
     }
     const lines = keys.map((k) => `${k}=${maskValue(env[k] ?? "")}`);
     await notify.replyPlain(
-      msg,
-      joinWxLines([`Injected keys (masked)${targetUserId === msg.userId ? "" : ` for ${targetUserId}`}:`, "", ...lines]),
+      ctx.envelope ?? ctx.userId,
+      joinWxLines([`Injected keys (masked)${targetUserId === ctx.userId ? "" : ` for ${targetUserId}`}:`, "", ...lines]),
     );
     return;
   }
@@ -60,30 +59,30 @@ export async function executeEnvAction(
     const key = parts[0]?.trim();
     const value = parts.slice(1).join(" ").trim();
     if (!key || !value) {
-      await notify.replyText(msg, "Usage: /env set <KEY> <value>", "warn");
+      await notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /env set <KEY> <value>", "warn");
       return;
     }
     const cur = readInjectedEnvForUser(targetUserId);
     cur[key] = value;
     writeInjectedEnvForUser(targetUserId, cur);
-    await notify.replyText(msg, `Updated: ${key}${targetUserId === msg.userId ? "" : ` (for ${targetUserId})`}`, "success");
+    await notify.replyText(ctx.envelope ?? ctx.userId, `Updated: ${key}${targetUserId === ctx.userId ? "" : ` (for ${targetUserId})`}`, "success");
     return;
   }
 
   if (action === "delete") {
     const key = parts[0]?.trim();
     if (!key) {
-      await notify.replyText(msg, "Usage: /env delete <KEY>", "warn");
+      await notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /env delete <KEY>", "warn");
       return;
     }
     const cur = readInjectedEnvForUser(targetUserId);
     if (!(key in cur)) {
-      await notify.replyText(msg, "No such key.", "warn");
+      await notify.replyText(ctx.envelope ?? ctx.userId, "No such key.", "warn");
       return;
     }
     delete cur[key];
     writeInjectedEnvForUser(targetUserId, cur);
-    await notify.replyText(msg, `Deleted: ${key}${targetUserId === msg.userId ? "" : ` (for ${targetUserId})`}`, "success");
+    await notify.replyText(ctx.envelope ?? ctx.userId, `Deleted: ${key}${targetUserId === ctx.userId ? "" : ` (for ${targetUserId})`}`, "success");
   }
 }
 

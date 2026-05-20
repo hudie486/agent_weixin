@@ -2,7 +2,7 @@
  * 代码项目域：仅在本文件内组合「向导 UI」与「代码模块统一入口」。
  * 勿在此 import 周期、环境等其它业务包。
  */
-import type { IncomingMessage } from "@wechatbot/wechatbot";
+import type { InboundEnvelope } from "../../sessionManager/types.js";
 import type { MenuOptionDef, WizardCollected, WizardDef } from "../../wizard/types.js";
 import { registerWizard } from "../../wizard/registry.js";
 import { dispatchWizardCommandWithDefaults } from "../../framework/wizard/adapters.js";
@@ -26,55 +26,55 @@ function validateGlob(s: string): string | null {
   return null;
 }
 
-function resolveWizardTargetUserId(msg: IncomingMessage, collected: WizardCollected): string {
+function resolveWizardTargetUserId(inbound: InboundEnvelope, collected: WizardCollected): string {
   const t = collected._targetUserId?.trim();
-  return t || msg.userId;
+  return t || inbound.userId;
 }
 
 function withTargetAfterAction(
   action: string,
   rest: string,
-  msg: IncomingMessage,
+  inbound: InboundEnvelope,
   collected: WizardCollected,
 ): string {
-  const target = resolveWizardTargetUserId(msg, collected);
+  const target = resolveWizardTargetUserId(inbound, collected);
   const trimmed = rest.trim();
-  if (target === msg.userId) return trimmed ? `${action} ${trimmed}` : action;
+  if (target === inbound.userId) return trimmed ? `${action} ${trimmed}` : action;
   return trimmed ? `${action} for ${target} ${trimmed}` : `${action} for ${target}`;
 }
 
 function buildCodeTerminalSub({
   collected,
-  msg,
+  inbound,
 }: {
   collected: WizardCollected;
-  msg: IncomingMessage;
+  inbound: InboundEnvelope;
 }): string | undefined {
   const flow = collected._flow;
-  if (flow === "list") return withTargetAfterAction("list", "", msg, collected);
+  if (flow === "list") return withTargetAfterAction("list", "", inbound, collected);
   if (flow === "add") {
     const al = collected.alias?.trim() ?? "";
     const p = collected.path?.trim() ?? "";
     if (!al || !p) return undefined;
-    return withTargetAfterAction("add", `${al} ${p}`, msg, collected);
+    return withTargetAfterAction("add", `${al} ${p}`, inbound, collected);
   }
   const al = collected.codeAlias?.trim() ?? "";
-  if (flow === "compile_project") return al ? withTargetAfterAction("compile", al, msg, collected) : undefined;
-  if (flow === "view_project") return al ? withTargetAfterAction("config", al, msg, collected) : undefined;
+  if (flow === "compile_project") return al ? withTargetAfterAction("compile", al, inbound, collected) : undefined;
+  if (flow === "view_project") return al ? withTargetAfterAction("config", al, inbound, collected) : undefined;
   if (flow === "param_glob") {
     if (!al) return undefined;
     const g = collected.editGlob?.trim() ?? "";
     if (!g) return undefined;
-    return withTargetAfterAction("config", `${al} 产物 ${g}`, msg, collected);
+    return withTargetAfterAction("config", `${al} 产物 ${g}`, inbound, collected);
   }
   if (flow === "param_name") {
     if (!al) return undefined;
     const n = collected.editSendName?.trim() ?? "";
     if (!n) return undefined;
-    return withTargetAfterAction("config", `${al} 产物名 ${n}`, msg, collected);
+    return withTargetAfterAction("config", `${al} 产物名 ${n}`, inbound, collected);
   }
-  if (flow === "param_clearglob") return al ? withTargetAfterAction("config", `${al} 清除 产物`, msg, collected) : undefined;
-  if (flow === "param_default") return al ? withTargetAfterAction("default", al, msg, collected) : undefined;
+  if (flow === "param_clearglob") return al ? withTargetAfterAction("config", `${al} 清除 产物`, inbound, collected) : undefined;
+  if (flow === "param_default") return al ? withTargetAfterAction("default", al, inbound, collected) : undefined;
   return undefined;
 }
 
@@ -144,9 +144,9 @@ export function registerCodeProjectsWizard(): void {
       code_project_pick: {
         kind: "dynamicMenu",
         prompt: "请选择项目（按已登记别名）：",
-        loadOptions: ({ ctx: _ctx, msg, collected }) => {
+        loadOptions: ({ ctx: _ctx, inbound, collected }) => {
           const st = loadCodeProjectsState();
-          const mine = listUserProjects(st, resolveWizardTargetUserId(msg, collected));
+          const mine = listUserProjects(st, resolveWizardTargetUserId(inbound, collected));
           const MAX = 8;
           const out: MenuOptionDef[] = [];
           if (!mine.length) {
@@ -297,15 +297,15 @@ export function registerCodeProjectsWizard(): void {
       },
       code_term: { kind: "terminal" },
     },
-    onTerminal: async ({ ctx, msg, collected }) => {
-      const sub = buildCodeTerminalSub({ collected, msg });
+    onTerminal: async ({ ctx, inbound, collected }) => {
+      const sub = buildCodeTerminalSub({ collected, inbound });
       if (!sub) {
-        await ctx.notify.replyText(msg, "向导数据不完整，无法生成命令。", "error");
+        await ctx.notify.replyText(inbound, "向导数据不完整，无法生成命令。", "error");
         return;
       }
-      const ok = await dispatchWizardCommandWithDefaults({ ctx, msg, domain: "code", sub });
+      const ok = await dispatchWizardCommandWithDefaults({ ctx, inbound, domain: "code", sub });
       if (!ok) {
-        await ctx.notify.replyText(msg, `命令未注册：${sub}`, "error");
+        await ctx.notify.replyText(inbound, `命令未注册：${sub}`, "error");
       }
       return;
     },

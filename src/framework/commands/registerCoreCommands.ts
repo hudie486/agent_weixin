@@ -1,28 +1,22 @@
 import { createCommandRegistry, type CommandRegistry } from "./registry.js";
 import type { ActionResolvers } from "./router.js";
-import { resolveCodeAction } from "../../modules/code/keywords.js";
-import { resolveEnvAction } from "../../modules/env/keywords.js";
-import { resolvePeriodicAction } from "../../modules/periodic/keywords.js";
-import { resolveUserAction } from "../../modules/user/keywords.js";
-import { registerCodeCommands } from "../../modules/code/commands.js";
-import { registerEnvCommands } from "../../modules/env/commands.js";
-import { registerPeriodicCommands } from "../../modules/periodic/commands.js";
-import { registerUserCommands } from "../../modules/user/commands.js";
+import { getCommandCatalog } from "./catalog.js";
+import { catalogResolverFor } from "./legacyRegister.js";
+import { bootstrapCommandSystems } from "../../commandModule/bootstrap.js";
 
+/** 创建运行时命令注册表：装配各业务域命令体系。具体定义在各域 catalog.ts。 */
 export function createCoreCommandRegistry(): CommandRegistry {
   const registry = createCommandRegistry();
-  registerCodeCommands(registry);
-  registerEnvCommands(registry);
-  registerPeriodicCommands(registry);
-  registerUserCommands(registry);
+  const catalog = bootstrapCommandSystems(getCommandCatalog());
+  catalog.registerHandlers(registry);
   return registry;
 }
 
 export function createCoreActionResolvers(): ActionResolvers {
   return {
-    code: resolveCodeAction,
-    env: resolveEnvAction,
-    periodic: resolvePeriodicAction,
-    user: resolveUserAction,
+    code: catalogResolverFor("code"),
+    env: catalogResolverFor("env"),
+    periodic: catalogResolverFor("periodic"),
+    user: catalogResolverFor("user"),
   };
 }

@@ -1,14 +1,28 @@
-import type { IncomingMessage } from "@wechatbot/wechatbot";
 import type { FrameworkContext } from "../contracts/module.js";
 import type { CommandRegistry } from "../commands/registry.js";
 import type { ActionResolvers } from "../commands/router.js";
 import { actionResolversSingleton, commandRegistrySingleton } from "../commands/runtime.js";
+import type { InboundEnvelope } from "../../sessionManager/types.js";
+import type { WizardHandlerCtx } from "../../wizard/types.js";
+
+function wizardCtxToFramework(ctx: WizardHandlerCtx, inbound: InboundEnvelope): FrameworkContext {
+  return {
+    userId: inbound.userId,
+    envelope: inbound,
+    notify: ctx.notify,
+    agentCfg: ctx.agentCfg,
+    session: ctx.session,
+    sessionPath: ctx.sessionPath,
+    botManager: ctx.botManager,
+    instanceId: ctx.instanceId,
+  };
+}
 
 export async function dispatchWizardCommand(args: {
   registry: CommandRegistry;
   resolvers: ActionResolvers;
-  ctx: FrameworkContext;
-  msg: IncomingMessage;
+  ctx: WizardHandlerCtx;
+  inbound: InboundEnvelope;
   domain: "periodic" | "code" | "env" | "user";
   sub: string;
 }): Promise<boolean> {
@@ -16,18 +30,20 @@ export async function dispatchWizardCommand(args: {
   if (!resolver) return false;
   const parsed = resolver(args.sub);
   if (!parsed) return false;
-  return args.registry.dispatch(args.ctx, {
+  const fctx = wizardCtxToFramework(args.ctx, args.inbound);
+  return args.registry.dispatch(fctx, {
     domain: args.domain,
     action: parsed.action,
     sub: parsed.rest,
     source: "wizard",
-    msg: args.msg,
+    userId: fctx.userId,
+    envelope: args.inbound,
   });
 }
 
 export async function dispatchWizardCommandWithDefaults(args: {
-  ctx: FrameworkContext;
-  msg: IncomingMessage;
+  ctx: WizardHandlerCtx;
+  inbound: InboundEnvelope;
   domain: "periodic" | "code" | "env" | "user";
   sub: string;
 }): Promise<boolean> {
@@ -35,7 +51,7 @@ export async function dispatchWizardCommandWithDefaults(args: {
     registry: commandRegistrySingleton,
     resolvers: actionResolversSingleton,
     ctx: args.ctx,
-    msg: args.msg,
+    inbound: args.inbound,
     domain: args.domain,
     sub: args.sub,
   });

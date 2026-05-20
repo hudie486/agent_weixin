@@ -48,6 +48,11 @@ export function isPendingExpired(p: WizardPending): boolean {
   return Date.now() - p.updatedAt > ttlMs();
 }
 
+export function clearWizardPending(userId: string, file = wizardStateFilePath()): void {
+  const state = loadWizardState(file);
+  setPending(state, userId, null, file);
+}
+
 export function setPending(
   state: WizardStateFile,
   userId: string,

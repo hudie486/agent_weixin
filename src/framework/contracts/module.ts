@@ -1,11 +1,9 @@
-import type { IncomingMessage, WeChatBot } from "@wechatbot/wechatbot";
 import type { AgentConfig } from "../../agent/index.js";
-import type { NotifyChannel } from "../../notify/channel.js";
 import type { SessionStoreData } from "../../session/store.js";
 import type { BotManager } from "../../multiBot/manager.js";
-import type { WxSessionHub } from "../../wxSession/hub.js";
+import type { InboundEnvelope, SessionNotifyPort } from "../../sessionManager/index.js";
 
-export type ModuleDomain = "wechat" | "agent" | "periodic" | "code" | "env" | "user";
+export type ModuleDomain = "wechat" | "qq" | "agent" | "periodic" | "code" | "env" | "user";
 
 export type ModuleCommandSource = "slash" | "wizard" | "chat" | "scheduler" | "system";
 
@@ -14,20 +12,22 @@ export type ModuleCommand = {
   source: ModuleCommandSource;
   userId: string;
   sub: string;
-  msg?: IncomingMessage;
+  envelope?: InboundEnvelope;
   meta?: Record<string, string>;
 };
 
+/** 业务模块上下文（平台盲） */
 export type FrameworkContext = {
-  bot?: WeChatBot;
-  botManager?: BotManager;
-  instanceId?: string;
-  /** 当前 Bot 的微信会话 Hub（推送请优先经此或 wxSessionRegistry） */
-  wxHub?: WxSessionHub;
-  notify: NotifyChannel;
+  /** 当前入站用户（命令发起者） */
+  userId: string;
+  envelope?: InboundEnvelope;
+  notify: SessionNotifyPort;
   agentCfg: AgentConfig;
   session: SessionStoreData;
   sessionPath: string;
+  /** 微信多实例（仅用户/登录相关，业务勿依赖） */
+  botManager?: BotManager;
+  instanceId?: string;
 };
 
 export type ModuleHandler = {

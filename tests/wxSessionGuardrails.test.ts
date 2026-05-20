@@ -4,8 +4,10 @@ import path from "node:path";
 
 const SRC_DIR = path.resolve("src");
 
-/** 唯一允许直接调用 WeChatBot send/reply 的文件（会话策略在此实现） */
-const BOT_SEND_REPLY_ALLOWED = new Set([path.join(SRC_DIR, "wxSession", "hub.ts").replace(/\\/g, "/")]);
+/** 唯一允许直接调用 WeChatBot send/reply 的文件（平台裸发送层） */
+const BOT_SEND_REPLY_ALLOWED = new Set([
+  path.join(SRC_DIR, "platforms", "wechat", "send.ts").replace(/\\/g, "/"),
+]);
 
 function listTsFiles(dir: string): string[] {
   const out: string[] = [];

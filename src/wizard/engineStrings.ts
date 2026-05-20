@@ -1,0 +1,26 @@
+/** Wizard UI strings (ASCII file — avoids editor encoding corruption on engine.ts). */
+export const WIZ_EXIT_WORDS = ["\u9000\u51fa", "\u53d6\u6d88", "exit", "quit"] as const;
+
+export const WIZ_FREE_TEXT_HINTS = [
+  "\u8bf7\u76f4\u63a5\u53d1\u9001\u4e00\u884c\u6587\u5b57\u4f5c\u4e3a\u7b54\u6848\uff08\u6574\u884c\u751f\u6548\uff0c\u53ef\u542b\u7a7a\u683c\uff09",
+  "\u82e5\u4e0a\u4e00\u6761\u6d88\u606f\u662f\u6570\u5b57\u83dc\u5355\uff0c\u4e5f\u53ef\u53ea\u56de\u590d\u83dc\u5355\u4e0a\u7684\u5e8f\u53f7\u4ee5\u5e26\u5165\u53c2\u6570",
+] as const;
+
+export const WIZ_EXIT_STEP = "\u9000\u51fa\uff08\u7ed3\u675f\u672c\u6b21\u5411\u5bfc\uff09";
+export const WIZ_EXPIRED = "\u5411\u5bfc\u4f1a\u8bdd\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u53d1\u9001 /\u5411\u5bfc \u6216 /\u83dc\u5355\u3002";
+export const WIZ_EXIT_DONE = "\u5df2\u9000\u51fa\u5411\u5bfc\u3002";
+export const WIZ_UNKNOWN = "\u672a\u77e5\u7684\u5411\u5bfc\uff0c\u8bf7\u53d1\u9001 /\u5411\u5bfc \u91cd\u65b0\u5f00\u59cb\u3002";
+export const WIZ_FORBIDDEN = "\u65e0\u6743\u4f7f\u7528\u6b64\u5411\u5bfc\u3002";
+export const WIZ_BAD_STEP = "\u5411\u5bfc\u6b65\u9aa4\u65e0\u6548\uff0c\u8bf7\u53d1\u9001 /\u5411\u5bfc \u91cd\u65b0\u5f00\u59cb\u3002";
+export const WIZ_NO_OPTIONS = "\u5f53\u524d\u6ca1\u6709\u53ef\u9009\u9879\u3002";
+export const WIZ_BAD_INDEX = "\u8bf7\u8f93\u5165\u6709\u6548\u5e8f\u53f7\u3002";
+export const WIZ_STEP_MISSING = "\u5411\u5bfc\u6b65\u9aa4\u4e0d\u5b58\u5728\u3002";
+export const WIZ_TERMINAL_SOON = "\u5373\u5c06\u6267\u884c\uff0c\u8bf7\u7a0d\u5019\u2026";
+
+export function wizExitSlotHint(slot: string): string {
+  return `\u9009\u9879 ${slot} \u4e3a\u9000\u51fa\uff0c\u8bf7\u52ff\u9644\u5e26\u5176\u5b83\u5185\u5bb9\u3002`;
+}
+
+export function wizExecFailed(msg: string): string {
+  return `\u6267\u884c\u5931\u8d25\uff1a${msg}`;
+}

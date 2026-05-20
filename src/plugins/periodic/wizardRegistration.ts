@@ -2,7 +2,7 @@
  * 周期任务域：向导步骤与 terminal 仅对接本域统一模块入口。
  * 勿在此 import 代码项目、环境注入等其它业务包。
  */
-import type { IncomingMessage } from "@wechatbot/wechatbot";
+import type { InboundEnvelope } from "../../sessionManager/types.js";
 import type { MenuOptionDef, WizardCollected, WizardDef } from "../../wizard/types.js";
 import { registerWizard } from "../../wizard/registry.js";
 import { dispatchWizardCommandWithDefaults } from "../../framework/wizard/adapters.js";
@@ -41,20 +41,20 @@ function validateSchedCron(s: string): string | null {
   return validateCronExpressionFive(s.trim(), PERIODIC_CRON_TZ);
 }
 
-function resolveWizardTargetUserId(msg: IncomingMessage, collected: WizardCollected): string {
+function resolveWizardTargetUserId(inbound: InboundEnvelope, collected: WizardCollected): string {
   const t = collected._targetUserId?.trim();
-  return t || msg.userId;
+  return t || inbound.userId;
 }
 
 function withTargetAfterAction(
   action: string,
   rest: string,
-  msg: IncomingMessage,
+  inbound: InboundEnvelope,
   collected: WizardCollected,
 ): string {
-  const target = resolveWizardTargetUserId(msg, collected);
+  const target = resolveWizardTargetUserId(inbound, collected);
   const trimmed = rest.trim();
-  if (target === msg.userId) return trimmed ? `${action} ${trimmed}` : action;
+  if (target === inbound.userId) return trimmed ? `${action} ${trimmed}` : action;
   return trimmed ? `${action} for ${target} ${trimmed}` : `${action} for ${target}`;
 }
 
@@ -65,13 +65,13 @@ async function resolveUserPeriodicJob(uid: string, idOrPrefix: string): Promise<
 
 async function buildPeriodicTerminalSub({
   collected,
-  msg,
+  inbound,
 }: {
   collected: WizardCollected;
-  msg: IncomingMessage;
+  inbound: InboundEnvelope;
 }): Promise<string | undefined> {
   const flow = collected._flow;
-  if (flow === "list") return withTargetAfterAction("list", "", msg, collected);
+  if (flow === "list") return withTargetAfterAction("list", "", inbound, collected);
   if (flow === "help") return "help";
   const delivery = collected.delivery ?? "stdout_nonempty";
   const desc = collected.desc?.trim() ?? "";
@@ -85,41 +85,41 @@ async function buildPeriodicTerminalSub({
     if (sn) rest += ` short ${sn}`;
     rest += sn ? ` short ${sn}` : "";
     rest += ` ${delivery} ${desc}`;
-    return withTargetAfterAction("create", rest, msg, collected);
+    return withTargetAfterAction("create", rest, inbound, collected);
   }
   if (flow === "trigger") {
     let rest = "trigger";
     if (sn) rest += ` short ${sn}`;
     rest += ` ${delivery} ${desc}`;
-    return withTargetAfterAction("create", rest, msg, collected);
+    return withTargetAfterAction("create", rest, inbound, collected);
   }
   if (flow === "modify") {
     const jidRaw = collected.modJobId?.trim() ?? "";
     if (!jidRaw) return undefined;
-    const targetUid = resolveWizardTargetUserId(msg, collected);
+    const targetUid = resolveWizardTargetUserId(inbound, collected);
     const job = await resolveUserPeriodicJob(targetUid, jidRaw);
     if (!job) return undefined;
     const kind = collected._modParamKind?.trim() ?? "";
     if (kind === "cron") {
       const raw = collected.modCronExpr?.trim() ?? "";
       if (!raw || validateCronExpressionFive(raw, PERIODIC_CRON_TZ)) return undefined;
-      return withTargetAfterAction("modify", `${job.id} cron ${raw.replace(/\s+/g, " ")}`, msg, collected);
+      return withTargetAfterAction("modify", `${job.id} cron ${raw.replace(/\s+/g, " ")}`, inbound, collected);
     }
     if (kind === "shortname") {
       const raw = collected.modNewShort ?? "";
       const t = raw.trim().replace(/[/\\:*?"<>|]/g, "").slice(0, 24);
       if (!t) return undefined;
-      return withTargetAfterAction("modify", `${job.id} short ${t}`, msg, collected);
+      return withTargetAfterAction("modify", `${job.id} short ${t}`, inbound, collected);
     }
-    if (kind === "clearshort") return withTargetAfterAction("modify", `${job.id} clear-short`, msg, collected);
+    if (kind === "clearshort") return withTargetAfterAction("modify", `${job.id} clear-short`, inbound, collected);
     if (kind === "delivery") {
       const dm = collected.modDelivery?.trim() ?? "";
       if (dm !== "stdout_nonempty" && dm !== "every_run") return undefined;
-      return withTargetAfterAction("modify", `${job.id} delivery ${dm}`, msg, collected);
+      return withTargetAfterAction("modify", `${job.id} delivery ${dm}`, inbound, collected);
     }
     if (kind !== "agent") return undefined;
     const ins = collected.modInstr?.trim() ?? "";
-    return withTargetAfterAction("modify", ins ? `${job.id} agent ${ins}` : `${job.id} agent`, msg, collected);
+    return withTargetAfterAction("modify", ins ? `${job.id} agent ${ins}` : `${job.id} agent`, inbound, collected);
   }
   return undefined;
 }
@@ -204,8 +204,8 @@ export function registerPeriodicJobsWizard(): void {
       per_mod_pick: {
         kind: "dynamicMenu",
         prompt: "请选择要修改的任务（按描述/简称区分；选中后将列出可改参数项）：",
-        loadOptions: async ({ ctx: _ctx, msg, collected }) => {
-          const targetUid = resolveWizardTargetUserId(msg, collected);
+        loadOptions: async ({ ctx: _ctx, inbound, collected }) => {
+          const targetUid = resolveWizardTargetUserId(inbound, collected);
           let jobs: PeriodicJob[] = [];
           try {
             const st = await listJobsState();
@@ -277,7 +277,7 @@ export function registerPeriodicJobsWizard(): void {
       per_mod_param_menu: {
         kind: "dynamicMenu",
         prompt: "请选择要修改的参数项：",
-        loadOptions: async ({ msg, collected }) => {
+        loadOptions: async ({ inbound, collected }) => {
           const raw = collected.modJobId?.trim() ?? "";
           if (!raw) {
             return [
@@ -291,7 +291,7 @@ export function registerPeriodicJobsWizard(): void {
           }
           let job: PeriodicJob | undefined;
           try {
-            job = await resolveUserPeriodicJob(resolveWizardTargetUserId(msg, collected), raw);
+            job = await resolveUserPeriodicJob(resolveWizardTargetUserId(inbound, collected), raw);
           } catch {
             job = undefined;
           }
@@ -470,15 +470,15 @@ export function registerPeriodicJobsWizard(): void {
       },
       per_term: { kind: "terminal" },
     },
-    onTerminal: async ({ ctx, msg, collected }) => {
-      const sub = await buildPeriodicTerminalSub({ collected, msg });
+    onTerminal: async ({ ctx, inbound, collected }) => {
+      const sub = await buildPeriodicTerminalSub({ collected, inbound });
       if (!sub) {
-        await ctx.notify.replyText(msg, "向导数据不完整，无法生成命令。", "error");
+        await ctx.notify.replyText(inbound, "向导数据不完整，无法生成命令。", "error");
         return;
       }
-      const ok = await dispatchWizardCommandWithDefaults({ ctx, msg, domain: "periodic", sub });
+      const ok = await dispatchWizardCommandWithDefaults({ ctx, inbound, domain: "periodic", sub });
       if (!ok) {
-        await ctx.notify.replyText(msg, `命令未注册：${sub}`, "error");
+        await ctx.notify.replyText(inbound, `命令未注册：${sub}`, "error");
       }
       return;
     },

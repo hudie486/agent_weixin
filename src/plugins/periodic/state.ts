@@ -42,6 +42,7 @@ const PATCH_KEYS = new Set([
   "shortName",
   "cronExpression",
   "cronTimeZone",
+  "notifyTargets",
 ]);
 
 function projectRoot(): string {
@@ -314,6 +315,21 @@ export function patchJob(id: string, patch: Record<string, unknown>): PeriodicJo
         }
         if (k === "shortName") {
           j.shortName = sanitizeStr(String(v ?? "").trim()) || null;
+          continue;
+        }
+        if (k === "notifyTargets") {
+          if (!Array.isArray(v)) continue;
+          const next: NonNullable<PeriodicJob["notifyTargets"]> = [];
+          const seen = new Set<string>();
+          for (const item of v) {
+            if (!item || typeof item !== "object") continue;
+            const uid = sanitizeStr(String((item as { userId?: string }).userId ?? "").trim());
+            if (!uid || seen.has(uid) || uid === j.notifyUserId) continue;
+            seen.add(uid);
+            const inst = sanitizeStr(String((item as { instanceId?: string }).instanceId ?? "").trim()) || null;
+            next.push({ userId: uid, instanceId: inst });
+          }
+          j.notifyTargets = next;
           continue;
         }
         if (k === "cronExpression" && j.kind === "schedule") {

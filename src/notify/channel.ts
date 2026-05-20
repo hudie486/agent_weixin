@@ -1,32 +1,16 @@
-import type { WeChatBot, IncomingMessage, SendContent } from "@wechatbot/wechatbot";
-import type { WxIntent } from "../wxTone.js";
+import type { WeChatBot } from "@wechatbot/wechatbot";
 import type { SessionStoreData } from "../session/store.js";
 import { loadSessionStore } from "../session/store.js";
 import path from "node:path";
 import { wxSessionRegistry } from "../wxSession/registry.js";
-import { createNotifyChannelFromHub } from "../wxSession/notifyAdapter.js";
+import { createSessionNotifyPort, sessionRegistry, type SessionNotifyPort } from "../sessionManager/index.js";
+import { registerWechatBotForDeliver } from "../platforms/wechat/deliver.js";
 
-/** @deprecated 新代码请使用 WxSessionHub / wxSessionRegistry().push；此为兼容适配器 */
-export type NotifyChannel = {
-  resetSeq(): void;
-  markUserInbound(userId: string): void;
-  replyText(msg: IncomingMessage, text: string, intent?: WxIntent): Promise<void>;
-  replyPlain(msg: IncomingMessage, text: string): Promise<void>;
-  notifyText(params: {
-    msg?: IncomingMessage;
-    userId: string;
-    text: string;
-    intent?: WxIntent;
-    plain?: boolean;
-  }): Promise<void>;
-  sendText(userId: string, text: string, intent?: WxIntent): Promise<void>;
-  sendFile(userId: string, buf: Buffer, fileName: string, caption?: string): Promise<void>;
-};
+export type NotifyChannel = SessionNotifyPort;
 
 export type CreateNotifyChannelOpts = {
   session?: SessionStoreData;
   sessionPath?: string;
-  /** 多 Bot 场景必填，用于会话状态与队列隔离 */
   instanceId?: string;
   ownerUserId?: string;
   isAdminInstance?: boolean;
@@ -34,10 +18,11 @@ export type CreateNotifyChannelOpts = {
 };
 
 /**
- * 创建 NotifyChannel（内部注册到 WxSessionRegistry 并走统一会话策略）。
+ * 创建 NotifyChannel：内部注册 WxSessionHub，出站经 SessionRegistry 分发至微信 deliver。
  */
 export function createNotifyChannel(bot: WeChatBot, opts?: CreateNotifyChannelOpts): NotifyChannel {
   const instanceId = opts?.instanceId?.trim() || "admin-main";
+  registerWechatBotForDeliver(instanceId, bot);
   const sessionPath =
     opts?.sessionPath?.trim() ||
     (instanceId === "admin-main"
@@ -52,7 +37,8 @@ export function createNotifyChannel(bot: WeChatBot, opts?: CreateNotifyChannelOp
     ownerUserId: opts?.ownerUserId,
     isAdminInstance: opts?.isAdminInstance ?? instanceId === "admin-main",
   });
-  return createNotifyChannelFromHub(hub);
+  return createSessionNotifyPort(sessionRegistry(), {
+    resetSeq: () => hub.resetSeq(),
+    markUserInbound: (userId) => hub.markInbound(userId),
+  });
 }
-
-export type { SendContent };

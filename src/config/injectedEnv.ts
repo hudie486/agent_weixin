@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { resolveEnvSourceUserId } from "../shared/resourceAudience/store.js";
 
 /** 可由 `/环境 set` 写入，启动时合并进 process.env（不落日志明文） */
 export function injectedEnvPath(): string {
@@ -66,11 +67,19 @@ export function readInjectedEnv(): Record<string, string> {
   return readInjectedEnvForUser(LEGACY_USER);
 }
 
-export function readInjectedEnvForUser(userId: string): Record<string, string> {
+function readInjectedEnvDirect(userId: string): Record<string, string> {
   const uid = userId.trim();
   if (!uid) return {};
   const st = readStateRaw();
   return { ...(st.byUserId[uid] ?? {}) };
+}
+
+export function readInjectedEnvForUser(userId: string): Record<string, string> {
+  const uid = userId.trim();
+  if (!uid) return {};
+  const sourceOwner = resolveEnvSourceUserId(uid);
+  if (sourceOwner === uid) return readInjectedEnvDirect(uid);
+  return { ...readInjectedEnvDirect(sourceOwner), ...readInjectedEnvDirect(uid) };
 }
 
 export function writeInjectedEnv(env: Record<string, string>): void {

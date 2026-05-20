@@ -1,4 +1,3 @@
-import type { IncomingMessage } from "@wechatbot/wechatbot";
 import type { FrameworkContext } from "../contracts/module.js";
 import { parseSlash } from "../../commands/slashParse.js";
 import { tryRoutedSlash } from "../../wizard/slashCatalog.js";
@@ -12,14 +11,20 @@ export async function routeSlashCommand(
   registry: CommandRegistry,
   resolvers: ActionResolvers,
   ctx: FrameworkContext,
-  msg: IncomingMessage,
   rawText: string,
 ): Promise<boolean> {
   const slash = parseSlash(rawText);
   if (!slash) return false;
   const routed = tryRoutedSlash(slash);
   if (!routed) return false;
-  if (routed.domain !== "periodic" && routed.domain !== "code" && routed.domain !== "env" && routed.domain !== "user") return false;
+  if (
+    routed.domain !== "periodic" &&
+    routed.domain !== "code" &&
+    routed.domain !== "env" &&
+    routed.domain !== "user"
+  ) {
+    return false;
+  }
   const resolver = resolvers[routed.domain];
   if (!resolver) return false;
   const parsed = resolver(routed.sub);
@@ -29,6 +34,7 @@ export async function routeSlashCommand(
     action: parsed.action,
     sub: parsed.rest,
     source: "slash",
-    msg,
+    userId: ctx.userId,
+    envelope: ctx.envelope,
   });
 }

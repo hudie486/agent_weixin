@@ -8,7 +8,6 @@ import { loadSessionStore, saveSessionStore, type SessionStoreData } from "../se
 import { createLogger } from "../logger.js";
 import { upsertManagedUser } from "../modules/user/store.js";
 import { launchWeChatPollLoop } from "../util/wechatPollLaunch.js";
-import { wxSessionRegistry } from "../wxSession/registry.js";
 
 const log = createLogger("multi-bot");
 
@@ -431,8 +430,12 @@ export class MultiBotManager implements BotManager {
       if (!rec) throw new Error("实例不存在或未启动");
       rt = await this.startRuntimeFromRecord(rec);
     }
-    const hub = wxSessionRegistry().requireHub(instanceId);
-    await hub.send(toUserId, { text, plain: true }, "sendFromInstance");
+    const { sessionRegistry } = await import("../sessionManager/index.js");
+    await sessionRegistry().deliver(
+      toUserId,
+      { text, plain: true },
+      { source: "sendFromInstance", useReplyToken: false, instanceIdOverride: instanceId },
+    );
   }
 
   async removeUserInstanceByOwnerUserId(userId: string): Promise<void> {

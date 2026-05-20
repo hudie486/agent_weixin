@@ -1,5 +1,5 @@
 import type { FrameworkContext, ModuleDomain } from "../contracts/module.js";
-import type { IncomingMessage } from "@wechatbot/wechatbot";
+import type { InboundEnvelope } from "../../sessionManager/index.js";
 
 export type CommandAction = string;
 
@@ -15,7 +15,8 @@ export type CommandInput = {
   action: CommandAction;
   sub: string;
   source: "slash" | "wizard" | "system";
-  msg?: IncomingMessage;
+  userId: string;
+  envelope?: InboundEnvelope;
 };
 
 export type CommandHandler = {

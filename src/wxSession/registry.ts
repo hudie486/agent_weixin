@@ -1,8 +1,10 @@
 import type { WeChatBot, IncomingMessage } from "@wechatbot/wechatbot";
 import type { SessionStoreData } from "../session/store.js";
 import { saveSessionStore } from "../session/store.js";
-import { WxSessionHub, sessionSliceFromStore } from "./hub.js";
+import { WxSessionHub } from "./hub.js";
 import type { OutboundMessage, OutboundRequest, PushResult } from "./types.js";
+import type { OutboundIntent } from "../sessionManager/types.js";
+import { sessionRegistry } from "../sessionManager/index.js";
 const ADMIN_INSTANCE_ID = "admin-main";
 
 export type RegisteredWxRuntime = {
@@ -36,13 +38,7 @@ export class WxSessionRegistry {
       }
       return prev;
     }
-    const persist = () => saveSessionStore(args.session, args.sessionPath);
-    const hub = new WxSessionHub({
-      instanceId: args.instanceId,
-      bot: args.bot,
-      store: sessionSliceFromStore(args.session),
-      persist,
-    });
+    const hub = new WxSessionHub({ instanceId: args.instanceId });
     this.hubs.set(args.instanceId, hub);
     this.meta.set(args.instanceId, {
       instanceId: args.instanceId,
@@ -64,6 +60,12 @@ export class WxSessionRegistry {
 
   getHub(instanceId: string): WxSessionHub | undefined {
     return this.hubs.get(instanceId);
+  }
+
+  getSessionRuntime(instanceId: string): { session: SessionStoreData; sessionPath: string } | undefined {
+    const m = this.meta.get(instanceId);
+    if (!m) return undefined;
+    return { session: m.session, sessionPath: m.sessionPath };
   }
 
   requireHub(instanceId: string): WxSessionHub {
@@ -89,8 +91,23 @@ export class WxSessionRegistry {
   }
 
   async push(req: OutboundRequest): Promise<PushResult> {
-    const hub = this.requireHub(req.instanceId);
-    return hub.push(req);
+    this.requireHub(req.instanceId);
+    const useReply = req.delivery.mode === "reply";
+    await sessionRegistry().deliver(
+      req.userId,
+      {
+        text: req.message.text,
+        intent: req.message.intent as OutboundIntent | undefined,
+        plain: req.message.plain,
+        file: req.message.file,
+      },
+      {
+        source: req.source ?? "wx-push",
+        useReplyToken: useReply,
+        instanceIdOverride: req.instanceId,
+      },
+    );
+    return { status: "sent" };
   }
 
   async pushToUser(
@@ -99,11 +116,32 @@ export class WxSessionRegistry {
     opts?: { instanceId?: string; replyTo?: IncomingMessage; source?: string },
   ): Promise<PushResult> {
     const instanceId = this.resolveInstanceId(userId, opts?.instanceId);
-    const hub = this.requireHub(instanceId);
+    this.requireHub(instanceId);
     if (opts?.replyTo) {
-      return hub.reply(opts.replyTo, message, opts.source);
+      sessionRegistry().bind({
+        userId,
+        platform: "wechat",
+        instanceId,
+        scope: "private",
+        externalUserId: userId,
+        replyToken: opts.replyTo,
+      });
     }
-    return hub.send(userId, message, opts?.source);
+    await sessionRegistry().deliver(
+      userId,
+      {
+        text: message.text,
+        intent: message.intent as OutboundIntent | undefined,
+        plain: message.plain,
+        file: message.file,
+      },
+      {
+        source: opts?.source ?? "wx-pushToUser",
+        useReplyToken: !!opts?.replyTo,
+        instanceIdOverride: instanceId,
+      },
+    );
+    return { status: "sent" };
   }
 
   markInbound(instanceId: string, userId: string): void {

@@ -18,7 +18,7 @@ export function listVerifiedAdmins(): string[] {
 
 export function requireVerifiedAdminOrThrow(userId: string): void {
   const uid = userId.trim();
-  if (!isAdminVerified(uid)) throw new Error("管理员未验证，请先执行 /用户 登录 <密码>");
+  if (!isAdminVerified(uid)) throw new Error("管理员未验证，请先执行 /用户 验证 <密码>");
 }
 
 export function resolveAdminPassword(): string | undefined {

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { loadInjectedEnvIntoProcess } from "./config/injectedEnv.js";
 import { TransportError, WeChatBot, type IncomingMessage } from "@wechatbot/wechatbot";
+import { isRetryableNetworkError } from "./util/networkRetry.js";
 import type { QrLoginCallbacks } from "@wechatbot/wechatbot";
 import { loadAgentConfig } from "./agent/index.js";
 import { createNotifyChannel } from "./notify/channel.js";
@@ -11,15 +12,16 @@ import { handleIncomingMessage } from "./handler/incoming.js";
 import { parseSlash } from "./commands/slashParse.js";
 import { startPeriodicModuleScheduler } from "./modules/periodic/module.js";
 import { startSteamFriendsMonitor } from "./plugins/steam/friendsMonitor.js";
-import { createLogger, redactSecrets } from "./logger.js";
-import { wechatTraceIoEnabled, terminalWechatIoEnabled } from "./util/wechatTrace.js";
+import { createLogger } from "./logger.js";
+import { sessionIoEnabled, logSessionIoInbound, terminalWechatIoEnabled } from "./util/sessionTrace.js";
 import { redactPathsForWx } from "./util/redactPathsForWx.js";
 import { applyGlobalFetchProxyFromEnv } from "./util/globalFetchProxy.js";
 import { MultiBotManager, type BotRuntime } from "./multiBot/manager.js";
 import { launchWeChatPollLoop } from "./util/wechatPollLaunch.js";
+import { registerPlatformDelivers, startEnabledPlatforms } from "./platforms/bootstrap.js";
+import { bindWechatInbound } from "./platforms/wechat/inbound.js";
 
 const log = createLogger("main");
-const wxIoLog = createLogger("wx-io");
 
 function sessionPath(): string {
   return process.env.SESSION_STORE_PATH?.trim() || path.join(process.cwd(), "data", "sessions.json");
@@ -34,16 +36,9 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function isRetryableNetworkError(e: unknown): boolean {
+function isWechatRetryableNetworkError(e: unknown): boolean {
   if (e instanceof TransportError) return true;
-  const chain: unknown[] = [];
-  let cur: unknown = e;
-  for (let i = 0; i < 8 && cur instanceof Error; i++) {
-    chain.push(cur.message);
-    cur = cur.cause;
-  }
-  const blob = chain.join(" ");
-  return /\b(ECONNRESET|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|fetch failed)\b/i.test(blob);
+  return isRetryableNetworkError(e);
 }
 
 function resolveUserVisibleIlinkLimitMessage(e: unknown): string | undefined {
@@ -73,7 +68,7 @@ async function loginWithRetries(bot: WeChatBot, callbacks?: QrLoginCallbacks): P
       await bot.login({ callbacks });
       return;
     } catch (e) {
-      const retry = attempt < max && isRetryableNetworkError(e);
+      const retry = attempt < max && isWechatRetryableNetworkError(e);
       log.warn(
         retry
           ? `微信登录网络异常（${attempt}/${max}），${Math.min(60_000, baseMs * attempt)}ms 后重试`
@@ -105,6 +100,9 @@ async function bootstrap(): Promise<void> {
     log.info(`已从 injected-env 合并 ${injected} 个环境变量`);
   }
   applyGlobalFetchProxyFromEnv();
+  const { hydrateQqBotConfigFromDisk } = await import("./plugins/qqBot/store.js");
+  hydrateQqBotConfigFromDisk();
+  registerPlatformDelivers();
   let agentCfg;
   try {
     agentCfg = loadAgentConfig();
@@ -142,12 +140,10 @@ async function bootstrap(): Promise<void> {
   startSteamFriendsMonitor({ notify });
 
   const handleRuntimeMessage = (rt: BotRuntime, msg: IncomingMessage): void => {
-    if (wechatTraceIoEnabled() || terminalWechatIoEnabled()) {
-      const preview =
-        msg.type === "text"
-          ? redactSecrets((msg.text ?? "").slice(0, 1200))
-          : `[type=${msg.type}]`;
-      wxIoLog.info(`收到 user=${msg.userId} ${preview}`);
+    if (msg.type === "text") {
+      logSessionIoInbound("wechat", rt.instanceId, msg.userId, msg.text ?? "");
+    } else if (sessionIoEnabled() || terminalWechatIoEnabled()) {
+      logSessionIoInbound("wechat", rt.instanceId, msg.userId, `[type=${msg.type}]`);
     }
 
     const runHandler = async (): Promise<void> => {
@@ -155,7 +151,6 @@ async function bootstrap(): Promise<void> {
         await rt.bot.sendTyping(msg.userId);
         await handleIncomingMessage(
           {
-            bot: rt.bot,
             botManager,
             instanceId: rt.instanceId,
             notify: rt.notify,
@@ -169,17 +164,14 @@ async function bootstrap(): Promise<void> {
         log.error("handle message", e);
         try {
           const iLinkLimit = resolveUserVisibleIlinkLimitMessage(e);
-          const networkLike = isRetryableNetworkError(e);
+          const networkLike = isWechatRetryableNetworkError(e);
           const userMsg = iLinkLimit
             ? iLinkLimit
             : networkLike
             ? "网络异常，消息发送失败，请稍后重试。"
             : `内部错误：${redactPathsForWx(e instanceof Error ? e.message.slice(0, 300) : String(e))}`;
-          await rt.notify.replyText(
-            msg,
-            userMsg,
-            iLinkLimit || networkLike ? "warn" : "error",
-          );
+          const { envelope } = bindWechatInbound({ msg, instanceId: rt.instanceId });
+          await rt.notify.replyText(envelope, userMsg, iLinkLimit || networkLike ? "warn" : "error");
         } catch {
           /* ignore */
         }
@@ -228,6 +220,8 @@ async function bootstrap(): Promise<void> {
   } catch (e) {
     log.warn(`startup: child bot restore failed: ${e instanceof Error ? e.message : String(e)}`);
   }
+
+  startEnabledPlatforms();
 }
 
 process.on("unhandledRejection", (reason) => {

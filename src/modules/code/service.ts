@@ -1,7 +1,4 @@
-import type { IncomingMessage } from "@wechatbot/wechatbot";
-import type { AgentConfig } from "../../agent/index.js";
-import type { NotifyChannel } from "../../notify/channel.js";
-import type { SessionStoreData } from "../../session/store.js";
+import type { FrameworkContext } from "../../framework/contracts/module.js";
 import { createCursorChatId, runAgentStreaming, withAgentResume } from "../../agent/index.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -29,34 +26,27 @@ import type { CodeAction } from "./keywords.js";
 import { codeCommandSpecs } from "./keywords.js";
 import { formatCommandHelp } from "../../framework/commands/helpText.js";
 import { isAdminVerified } from "../../security/adminAuth.js";
-
-export type CodeServiceCtx = {
-  notify: NotifyChannel;
-  agentCfg: AgentConfig;
-  session: SessionStoreData;
-  sessionPath: string;
-};
+import { resolveCodeSourceUserId } from "../../shared/resourceAudience/store.js";
 
 export async function executeCodeAction(
-  ctx: CodeServiceCtx,
-  msg: IncomingMessage,
+  ctx: FrameworkContext,
   action: CodeAction,
   rest: string,
 ): Promise<void> {
-  let uid = msg.userId;
+  let uid = ctx.userId;
   let actionRest = rest;
   try {
-    const parsed = resolveCodeTargetUser(msg.userId, rest);
-    uid = parsed.targetUserId;
+    const parsed = resolveCodeTargetUser(ctx.userId, rest);
+    uid = resolveCodeSourceUserId(parsed.targetUserId);
     actionRest = parsed.tail;
   } catch (e) {
-    await ctx.notify.replyText(msg, e instanceof Error ? e.message : String(e), "error");
+    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, e instanceof Error ? e.message : String(e), "error");
     return;
   }
   const parts = actionRest.trim().split(/\s+/).filter(Boolean);
 
   if (action === "help") {
-    await ctx.notify.replyPlain(msg, formatCommandHelp("[代码] 项目管理与构建", codeCommandSpecs()));
+    await ctx.notify.replyPlain(ctx.envelope ?? ctx.userId, formatCommandHelp("[代码] 项目管理与构建", codeCommandSpecs()));
     return;
   }
 
@@ -64,7 +54,7 @@ export async function executeCodeAction(
   if (action === "list") {
     const mine = listUserProjects(state, uid);
     if (!mine.length) {
-      await ctx.notify.replyText(msg, "No projects. Use /code add ...", "info");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "No projects. Use /code add ...", "info");
       return;
     }
     const def = getDefaultAlias(state, uid);
@@ -73,7 +63,7 @@ export async function executeCodeAction(
       const root = p.kind === "ssh" ? `${p.ssh!.user}@${p.ssh!.host}:${p.ssh!.remotePath}` : (p.localPath ?? "");
       return `${p.alias}${mark} · ${p.kind} · build.sh ${p.hasBuildScript ? "yes" : "no"}\n${redactPathsForWx(root)}`;
     });
-    await ctx.notify.replyPlain(msg, joinWxLines(lines));
+    await ctx.notify.replyPlain(ctx.envelope ?? ctx.userId, joinWxLines(lines));
     return;
   }
 
@@ -81,11 +71,11 @@ export async function executeCodeAction(
     const alias = parts[0]?.trim() ?? "";
     const target = parts.slice(1).join(" ").trim();
     if (!alias || !target) {
-      await ctx.notify.replyText(msg, "Usage: /code add <alias> <path|ssh>", "warn");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /code add <alias> <path|ssh>", "warn");
       return;
     }
     if (findProjectByAlias(state, uid, alias)) {
-      await ctx.notify.replyText(msg, "Alias exists.", "error");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Alias exists.", "error");
       return;
     }
     const ssh = parseSshProjectSpec(target);
@@ -101,12 +91,12 @@ export async function executeCodeAction(
         createdAt: Date.now(),
       });
       saveCodeProjectsState(state);
-      await ctx.notify.replyText(msg, `Added SSH project ${alias}`, "success");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, `Added SSH project ${alias}`, "success");
       return;
     }
     const local = validateLocalProjectRoot(target);
     if (!local.ok) {
-      await ctx.notify.replyText(msg, local.reason, "error");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, local.reason, "error");
       return;
     }
     state.projects.push({
@@ -120,37 +110,37 @@ export async function executeCodeAction(
     });
     if (!getDefaultAlias(state, uid)) state.defaultAliasByUserId[uid] = alias;
     saveCodeProjectsState(state);
-    await ctx.notify.replyText(msg, `Added local project ${alias}`, "success");
+    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, `Added local project ${alias}`, "success");
     return;
   }
 
   if (action === "default") {
     const alias = parts[0]?.trim();
     if (!alias || !findProjectByAlias(state, uid, alias)) {
-      await ctx.notify.replyText(msg, "Usage: /code default <alias>", "warn");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /code default <alias>", "warn");
       return;
     }
     state.defaultAliasByUserId[uid] = alias;
     saveCodeProjectsState(state);
-    await ctx.notify.replyText(msg, `Default set to ${alias}`, "success");
+    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, `Default set to ${alias}`, "success");
     return;
   }
 
   if (action === "remove") {
     const alias = parts[0]?.trim();
     if (!alias) {
-      await ctx.notify.replyText(msg, "Usage: /code remove <alias>", "warn");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /code remove <alias>", "warn");
       return;
     }
     const idx = state.projects.findIndex((p) => p.userId === uid && p.alias.toLowerCase() === alias.toLowerCase());
     if (idx < 0) {
-      await ctx.notify.replyText(msg, "Project not found", "error");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Project not found", "error");
       return;
     }
     state.projects.splice(idx, 1);
     if (state.defaultAliasByUserId[uid]?.toLowerCase() === alias.toLowerCase()) delete state.defaultAliasByUserId[uid];
     saveCodeProjectsState(state);
-    await ctx.notify.replyText(msg, `Removed ${alias}`, "success");
+    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, `Removed ${alias}`, "success");
     return;
   }
 
@@ -159,12 +149,12 @@ export async function executeCodeAction(
 
   if (action === "config") {
     if (!project) {
-      await ctx.notify.replyText(msg, "Project not found", "error");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Project not found", "error");
       return;
     }
     if (!parts[1]) {
       await ctx.notify.replyPlain(
-        msg,
+        ctx.envelope ?? ctx.userId,
         joinWxLines([
           `Project: ${project.alias}`,
           `Kind: ${project.kind}`,
@@ -180,82 +170,82 @@ export async function executeCodeAction(
     else if (op === "产物名") project.artifactSendName = parts.slice(2).join(" ").trim() || null;
     else if (op === "清除" && (parts[2] ?? "") === "产物") project.artifactGlob = null;
     else {
-      await ctx.notify.replyText(msg, "Usage: /code config <alias> [产物|产物名|清除 产物] ...", "warn");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /code config <alias> [产物|产物名|清除 产物] ...", "warn");
       return;
     }
     saveCodeProjectsState(state);
-    await ctx.notify.replyText(msg, "Updated.", "success");
+    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Updated.", "success");
     return;
   }
 
   if (action === "compile") {
     if (!project) {
-      await ctx.notify.replyText(msg, "Project not found", "error");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Project not found", "error");
       return;
     }
     if (!project.hasBuildScript) {
-      await ctx.notify.replyText(msg, "No build.sh", "warn");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "No build.sh", "warn");
       return;
     }
-    await ctx.notify.replyText(msg, "Building...", "compile");
+    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Building...", "compile");
     if (project.kind === "ssh" && project.ssh) {
       const r = await runSshBuildSh(project.ssh);
       if (r.kind === "skipped") {
-        await ctx.notify.replyText(msg, "build.sh not found on remote", "warn");
+        await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "build.sh not found on remote", "warn");
         return;
       }
       if (r.kind === "error") {
-        await ctx.notify.replyText(msg, redactPathsForWx(r.summary), "error");
+        await ctx.notify.replyText(ctx.envelope ?? ctx.userId, redactPathsForWx(r.summary), "error");
         return;
       }
       const g = project.artifactGlob?.trim() || process.env.CODE_ARTIFACT_GLOB?.trim();
       if (!g || /[\*\?\[\]]/.test(g) || g.includes("**")) {
-        await ctx.notify.replyText(msg, redactPathsForWx(r.summary), "success");
+        await ctx.notify.replyText(ctx.envelope ?? ctx.userId, redactPathsForWx(r.summary), "success");
         return;
       }
       const scp = await scpRemoteArtifactToTemp(project.ssh, g);
       if (!scp.ok) {
-        await ctx.notify.replyText(msg, scp.reason, "warn");
+        await ctx.notify.replyText(ctx.envelope ?? ctx.userId, scp.reason, "warn");
         return;
       }
       const buf = fs.readFileSync(scp.localPath);
-      await ctx.notify.sendFile(msg.userId, buf, path.basename(scp.localPath), "artifact");
+      await ctx.notify.sendFile(ctx.userId, buf, path.basename(scp.localPath), "artifact");
       try {
         fs.unlinkSync(scp.localPath);
       } catch {
         // ignore
       }
-      await ctx.notify.replyText(msg, redactPathsForWx(r.summary), "success");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, redactPathsForWx(r.summary), "success");
       return;
     }
     if (!project.localPath) {
-      await ctx.notify.replyText(msg, "Invalid local path", "error");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Invalid local path", "error");
       return;
     }
     const out = await runLocalBuildSh(project.localPath);
     if (out.kind === "skipped") {
-      await ctx.notify.replyText(msg, "build.sh not found", "warn");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "build.sh not found", "warn");
       return;
     }
     if (out.kind === "error") {
-      await ctx.notify.replyText(msg, redactPathsForWx(out.summary), "error");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, redactPathsForWx(out.summary), "error");
       return;
     }
     const artifact = await resolveArtifactAfterBuild(project.localPath, project.artifactGlob);
     if (!artifact) {
-      await ctx.notify.replyText(msg, "Build done, artifact not found.", "info");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Build done, artifact not found.", "info");
       return;
     }
     const buf = fs.readFileSync(artifact);
-    await ctx.notify.sendFile(msg.userId, buf, project.artifactSendName?.trim() || path.basename(artifact), "artifact");
-    await ctx.notify.replyText(msg, "Build done.", "success");
+    await ctx.notify.sendFile(ctx.userId, buf, project.artifactSendName?.trim() || path.basename(artifact), "artifact");
+    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Build done.", "success");
     return;
   }
 
   if (action === "fix") {
     const instruction = parts.join(" ").trim();
     if (!instruction) {
-      await ctx.notify.replyText(msg, "Usage: /code fix [alias] <instruction>", "warn");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /code fix [alias] <instruction>", "warn");
       return;
     }
     let target = project;
@@ -265,7 +255,7 @@ export async function executeCodeAction(
       prompt = parts.slice(1).join(" ").trim();
     }
     if (!target || target.kind === "ssh" || !target.localPath) {
-      await ctx.notify.replyText(msg, "Fix requires a local project.", "error");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Fix requires a local project.", "error");
       return;
     }
     let chatId = target.fixChatId?.trim();
@@ -282,15 +272,15 @@ export async function executeCodeAction(
       traceId: `code-fix:${target.id}:${Date.now()}`,
       stream: {
         onChunk: async (text) => {
-          await ctx.notify.replyText(msg, redactPathsForWx(text), "progress");
+          await ctx.notify.replyText(ctx.envelope ?? ctx.userId, redactPathsForWx(text), "progress");
         },
       },
     });
     if (!res.ok) {
-      await ctx.notify.replyText(msg, redactPathsForWx(res.message.slice(0, 400)), "error");
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, redactPathsForWx(res.message.slice(0, 400)), "error");
       return;
     }
-    await ctx.notify.replyText(msg, "Fix completed.", "success");
+    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Fix completed.", "success");
   }
 }
 

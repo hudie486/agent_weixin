@@ -4,6 +4,7 @@
 
 - **运行环境**：Node.js **≥ 22**
 - **配置入口**：项目根目录 `.env`（可参考 [`.env.example`](./.env.example)）
+- **多平台**：微信 + QQ（可选）共用业务模块；**会话管理**（`src/sessionManager/`）登记 `userId` 与平台投递通道，业务只产出「userId + 消息」
 
 ## 快速开始
 
@@ -23,6 +24,24 @@ npm run build
 npm start
 ```
 
+## QQ 机器人（可选）
+
+在 `.env` 中配置 `QQ_BOT_APP_ID` 与 `QQ_BOT_CLIENT_SECRET`（或 `QQ_BOT_TOKEN`），并设 `QQ_BOT_ENABLED=1`；也可在运行时通过 **`/用户 QQ 连接`** 或向导 **用户中心 → 配置 QQ 机器人连接** 写入 `data/qq-bot-config.json` 并热启动 WebSocket。
+
+| 命令 | 说明 |
+| --- | --- |
+| `/用户 验证 <密码>` | 管理员口令验证 |
+| `/用户 登记` | 当前聊天者加入白名单（微信/QQ 通用） |
+| `/用户 添加` | 管理员：选择平台（微信扫码 / QQ 登记指引） |
+| `/用户 添加 微信` | 生成微信扫码二维码 |
+| `/用户 添加 QQ` | 展示 QQ 新用户入网步骤 |
+| `/用户 QQ 连接 <AppID> <Secret>` | 配置 QQ **机器人**接入（须先验证；非用户扫码） |
+| `/用户 QQ 状态` / `/用户 QQ 断开` | 查看或停止 QQ 机器人连接 |
+
+**凭证校验**：保存 QQ 配置前会请求 QQ 开放平台验证 AppID/Secret；若提示 `fetch failed` 多为本机出网问题，而非 Secret 一定错误。
+
+QQ 与微信并列，共用 `/帮助`、`/用户`、`/向导`。业务 `userId`：微信为原始 ID，QQ 为 `qq:c2c:<openid>`。
+
 ## 主要能力
 
 | 能力 | 说明 |
@@ -30,7 +49,7 @@ npm start
 | 私聊对话 | **无向导 pending** 时，非斜杠文本走 `runAgentStreaming` 并尽量推流式进度；**在向导中**仅填参，与普通聊天隔离、不走该 Agent 通路 |
 | 斜杠命令 | 以 `/` 开头（全角 `／` 会被归一成 `/`），见下表 |
 | 用户白名单 | `ALLOWED_USER_IDS` 非空时仅列表内 `userId` 可用；空则不限 |
-| 管理员 | 管理员通过 `/用户 login <password>` 验证后，可执行用户管理、跨用户查看/操作与主动喊话 |
+| 管理员 | 管理员通过 `/用户 验证 <密码>` 后，可执行用户管理、跨用户查看/操作与主动喊话 |
 | 会话续聊 | 默认 `CHAT_SESSION_ENABLE=1` 时，为每用户维护 Cursor `chatId`（`--resume`） |
 | 周期任务 | Node 读写 `PERIODIC_STATE_PATH`；**schedule** 使用 **5 段 CRON**（`Asia/Shanghai`），作业目录在 `PERIODIC_JOB_ROOT/<任务ID>`，入口默认 `run.mjs` |
 | 环境注入 | `/环境 set` 按 `userId` 隔离写入注入 JSON；周期脚本运行时会自动注入所属用户环境变量 |

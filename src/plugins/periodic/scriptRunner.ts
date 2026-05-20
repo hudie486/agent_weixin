@@ -5,7 +5,8 @@ import { isScriptPayload } from "./types.js";
 import { resolveScriptEntry } from "./paths.js";
 import { bumpNext, noteResult } from "./state.js";
 import type { NotifyChannel } from "../../notify/channel.js";
-import { pushPeriodicJobMessage, resolveJobNotifyInstanceId } from "./wxPush.js";
+import { listPeriodicNotifyTargets, resolveDefaultNotifyInstanceId } from "../../shared/notifyTarget.js";
+import { pushPeriodicJobMessage } from "./wxPush.js";
 import { createLogger, redactSecrets } from "../../logger.js";
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
 import { wxParagraphsFromNewlines } from "../../util/wxRichText.js";
@@ -101,15 +102,19 @@ export async function executePeriodicScriptJob(
   let result: PeriodicScriptRunResult = { ok: true };
   try {
     try {
-        const flushed = await drainRetryMessagesForUser({
-          userId: job.notifyUserId,
-          notify,
-          maxItems: 50,
-          retryPerItem: 2,
-          backoffMs: 1200,
-        });
-        if (flushed.sent > 0 || flushed.failed > 0) {
-          log.info(`retry-queue drained job=${job.id} sent=${flushed.sent} failed=${flushed.failed}`);
+        for (const t of listPeriodicNotifyTargets(job)) {
+          const flushed = await drainRetryMessagesForUser({
+            userId: t.userId,
+            notify,
+            maxItems: 50,
+            retryPerItem: 2,
+            backoffMs: 1200,
+          });
+          if (flushed.sent > 0 || flushed.failed > 0) {
+            log.info(
+              `retry-queue drained job=${job.id} user=${t.userId} sent=${flushed.sent} failed=${flushed.failed}`,
+            );
+          }
         }
     } catch (e) {
       log.warn(`drain retry queue failed: ${errText(e)}`);
@@ -118,6 +123,7 @@ export async function executePeriodicScriptJob(
     const env = {
       ...process.env,
       ...readInjectedEnvForUser(job.notifyUserId),
+      // 额外受众的环境链接在 readInjectedEnvForUser 内按成员解析
     };
     const { stdout, stderr } = await execFilePromised(node, [scriptName], {
       cwd,
@@ -144,15 +150,17 @@ export async function executePeriodicScriptJob(
       } catch (e) {
         const em = errText(e);
         log.warn(`notify stdout failed job=${job.id}: ${em}`);
-        enqueueRetryMessage({
-          jobId: job.id,
-          userId: job.notifyUserId,
-          notifyInstanceId: resolveJobNotifyInstanceId(job),
-          text: wxParagraphsFromNewlines(text),
-          intent: "info",
-          plain: true,
-          lastError: em,
-        });
+        for (const t of listPeriodicNotifyTargets(job)) {
+          enqueueRetryMessage({
+            jobId: job.id,
+            userId: t.userId,
+            notifyInstanceId: t.instanceId ?? resolveDefaultNotifyInstanceId(t.userId),
+            text: wxParagraphsFromNewlines(text),
+            intent: "info",
+            plain: true,
+            lastError: em,
+          });
+        }
       }
     }
 
@@ -161,15 +169,17 @@ export async function executePeriodicScriptJob(
       try {
         await pushPeriodicJobMessage(job, "定时脚本执行完成（stdout 为空）", "success");
       } catch {
-        enqueueRetryMessage({
-          jobId: job.id,
-          userId: job.notifyUserId,
-          notifyInstanceId: resolveJobNotifyInstanceId(job),
-          text: "定时脚本执行完成（stdout 为空）",
-          intent: "success",
-          plain: false,
-          lastError: "notify success message failed",
-        });
+        for (const t of listPeriodicNotifyTargets(job)) {
+          enqueueRetryMessage({
+            jobId: job.id,
+            userId: t.userId,
+            notifyInstanceId: t.instanceId ?? resolveDefaultNotifyInstanceId(t.userId),
+            text: "定时脚本执行完成（stdout 为空）",
+            intent: "success",
+            plain: false,
+            lastError: "notify success message failed",
+          });
+        }
       }
     }
 

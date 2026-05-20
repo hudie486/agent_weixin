@@ -1,8 +1,21 @@
 {
-  "name": "wechat-agent-bot",
+  "name": "@hudie486/wechat-agent-bot",
   "version": "0.1.0",
-  "private": true,
+  "description": "基于 wechatbot 与 Cursor Agent CLI 的微信私聊机器人",
   "type": "module",
+  "main": "./dist/src/main.js",
+  "types": "./dist/src/main.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hudie486/agent_weixin.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -10,18 +23,21 @@
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/main.js",
+    "prepublishOnly": "npm run build",
     "test": "node --experimental-vm-modules node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {
     "@wechatbot/wechatbot": "^2.1.1",
     "cron-parser": "^5.4.0",
     "dotenv": "^16.4.5",
+    "qq-guild-bot": "^2.9.5",
     "qrcode": "^1.5.4",
     "undici": "^6.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/qrcode": "^1.5.6",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

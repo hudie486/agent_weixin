@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseMenuChoice } from "../src/wizard/engine.js";
 import { withWizardReplyPrefix } from "../src/wizard/replyPrefix.js";
-import { toWizardKeycapIndex } from "../src/wizard/formatMenu.js";
+import { formatWizardMenuIndex } from "../src/wizard/formatMenu.js";
 import { isPendingExpired } from "../src/wizard/stateStore.js";
 import type { WizardPending } from "../src/wizard/types.js";
 import { tryRoutedSlash } from "../src/wizard/slashCatalog.js";
@@ -12,7 +12,10 @@ import { formatWizardExecPreview } from "../src/wizard/terminalPreview.js";
 
 describe("formatWizardExecPreview", () => {
   it("formats code domain line without info prefix", () => {
-    expect(formatWizardExecPreview("code", "编译 pre")).toBe("📌执行 ： /代码 编译 pre");
+    expect(formatWizardExecPreview("code", "编译 pre")).toBe("📌 将执行：/代码 编译 pre");
+    expect(formatWizardExecPreview("user", "添加 QQ 1 secret")).toBe(
+      "📌 将执行：/用户 添加 QQ 1 secret",
+    );
   });
 });
 
@@ -51,10 +54,10 @@ describe("parseMenuChoice", () => {
   });
 });
 
-describe("toWizardKeycapIndex", () => {
-  it("uses keycap digit for single digit", () => {
-    expect(toWizardKeycapIndex(1)).toContain("1");
-    expect(toWizardKeycapIndex(1)).toContain("\uFE0F");
+describe("formatWizardMenuIndex", () => {
+  it("aligns double-digit indices with padding", () => {
+    expect(formatWizardMenuIndex(9, 12)).toBe(" 9.");
+    expect(formatWizardMenuIndex(12, 12)).toBe("12.");
   });
 });
 

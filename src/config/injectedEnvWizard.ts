@@ -2,8 +2,8 @@
  * 注入环境变量域（injected-env.json）：向导仅对接环境模块统一入口。
  * 勿在此 import 代码项目、周期任务等其它业务包。
  */
-import type { IncomingMessage } from "@wechatbot/wechatbot";
 import type { MenuOptionDef, WizardCollected, WizardDef } from "../wizard/types.js";
+import type { InboundEnvelope } from "../sessionManager/types.js";
 import { registerWizard } from "../wizard/registry.js";
 import { dispatchWizardCommandWithDefaults } from "../framework/wizard/adapters.js";
 import { readInjectedEnvForUser } from "./injectedEnv.js";
@@ -28,49 +28,49 @@ function validateNonEmpty(s: string): string | null {
   return s.trim() ? null : "不能为空";
 }
 
-function resolveWizardTargetUserId(msg: IncomingMessage, collected: WizardCollected): string {
+function resolveWizardTargetUserId(inbound: InboundEnvelope, collected: WizardCollected): string {
   const t = collected._targetUserId?.trim();
-  return t || msg.userId;
+  return t || inbound.userId;
 }
 
 function withTargetAfterAction(
   action: string,
   rest: string,
-  msg: IncomingMessage,
+  inbound: InboundEnvelope,
   collected: WizardCollected,
 ): string {
-  const target = resolveWizardTargetUserId(msg, collected);
+  const target = resolveWizardTargetUserId(inbound, collected);
   const trimmed = rest.trim();
-  if (target === msg.userId) return trimmed ? `${action} ${trimmed}` : action;
+  if (target === inbound.userId) return trimmed ? `${action} ${trimmed}` : action;
   return trimmed ? `${action} for ${target} ${trimmed}` : `${action} for ${target}`;
 }
 
 function buildEnvTerminalSub({
   collected,
-  msg,
+  inbound,
 }: {
   collected: WizardCollected;
-  msg: IncomingMessage;
+  inbound: InboundEnvelope;
 }): string | undefined {
   const flow = collected._flow;
   if (flow === "help") return "help";
-  if (flow === "list") return withTargetAfterAction("list", "", msg, collected);
+  if (flow === "list") return withTargetAfterAction("list", "", inbound, collected);
   if (flow === "set") {
     const k = collected.envKey?.trim() ?? "";
     const v = collected.envVal ?? "";
     if (!k || !v.trim()) return undefined;
-    return withTargetAfterAction("set", `${k} ${v}`, msg, collected);
+    return withTargetAfterAction("set", `${k} ${v}`, inbound, collected);
   }
   if (flow === "delete") {
     const k = collected.delKey?.trim() ?? "";
     if (!k) return undefined;
-    return withTargetAfterAction("delete", k, msg, collected);
+    return withTargetAfterAction("delete", k, inbound, collected);
   }
   if (flow === "modify") {
     const k = collected.modEnvKey?.trim() ?? "";
     const v = collected.modEnvVal ?? "";
     if (!k || !v.trim()) return undefined;
-    return withTargetAfterAction("set", `${k} ${v}`, msg, collected);
+    return withTargetAfterAction("set", `${k} ${v}`, inbound, collected);
   }
   return undefined;
 }
@@ -176,8 +176,8 @@ export function registerInjectedEnvWizard(): void {
       env_mod_pick: {
         kind: "dynamicMenu",
         prompt: "请选择要修改的**已有键名**（将再输入新值）：",
-        loadOptions: ({ msg, collected }) => {
-          const env = readInjectedEnvForUser(resolveWizardTargetUserId(msg, collected));
+        loadOptions: ({ inbound, collected }) => {
+          const env = readInjectedEnvForUser(resolveWizardTargetUserId(inbound, collected));
           const keys = Object.keys(env).sort();
           const MAX = 8;
           const out: MenuOptionDef[] = [];
@@ -243,15 +243,15 @@ export function registerInjectedEnvWizard(): void {
       },
       env_term: { kind: "terminal" },
     },
-    onTerminal: async ({ ctx, msg, collected }) => {
-      const sub = buildEnvTerminalSub({ collected, msg });
+    onTerminal: async ({ ctx, inbound, collected }) => {
+      const sub = buildEnvTerminalSub({ collected, inbound });
       if (!sub) {
-        await ctx.notify.replyText(msg, "向导数据不完整，无法生成命令。", "error");
+        await ctx.notify.replyText(inbound, "向导数据不完整，无法生成命令。", "error");
         return;
       }
-      const ok = await dispatchWizardCommandWithDefaults({ ctx, msg, domain: "env", sub });
+      const ok = await dispatchWizardCommandWithDefaults({ ctx, inbound, domain: "env", sub });
       if (!ok) {
-        await ctx.notify.replyText(msg, `命令未注册：${sub}`, "error");
+        await ctx.notify.replyText(inbound, `命令未注册：${sub}`, "error");
       }
       return;
     },

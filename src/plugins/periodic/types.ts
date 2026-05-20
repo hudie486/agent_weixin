@@ -26,10 +26,17 @@ export type DailyShanghaiClock = {
   minute: number;
 };
 
+export type NotifyTarget = {
+  userId: string;
+  instanceId?: string | null;
+};
+
 export type PeriodicJob = {
   id: string;
   kind: PeriodicJobKind;
   notifyUserId: string;
+  /** 额外通知对象（与主 notifyUserId 同任务、同脚本，仅推送渠道不同） */
+  notifyTargets?: NotifyTarget[];
   /** 推送使用的 Bot 实例（多 Bot 时由创建方写入） */
   notifyInstanceId?: string | null;
   enabled: boolean;
