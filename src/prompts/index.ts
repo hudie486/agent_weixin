@@ -1,6 +1,7 @@
 import { periodicAgentStructuredHints } from "./periodicAgent.js";
+import { userDisplayNamesForAgent } from "./userDisplay.js";
 
-export { periodicAgentStructuredHints };
+export { periodicAgentStructuredHints, userDisplayNamesForAgent };
 
 /** Base system prompt for free-form chat */
 

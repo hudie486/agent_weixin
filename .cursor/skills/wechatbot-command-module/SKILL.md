@@ -26,10 +26,20 @@ disable-model-invocation: true
 - `src/modules/<域>/catalog.ts` — **该域全部命令定义**
 - `.cursor/skills/wechatbot-<域>-commands/` — 该域命令说明 Skill（与 Catalog 对齐）
 
+## NLU 与润色边界
+
+| 阶段 | 是否 DeepSeek 润色 | 发送方式 |
+|------|-------------------|----------|
+| 预筛 + LLM 抽槽 | 否（`nluLlmClient` 只出 JSON） | — |
+| 填参追问 / 消歧 / 澄清 / 取消 | 是（`nluPromptStyle`，`NLU_STYLE_ENABLE`） | `replyPlain` |
+| **命令执行结果**（列表、✅❌、业务数据） | **否** | 各域 `replyText` / `replyPlain` 直发 |
+
+禁止对 `execute*Action` 的成功/失败/列表输出调用 `styleNluDialogue`。
+
 ## 扩展 NLU 时
 
 1. 在 `catalog.ts` 为命令增加 `nluHints`（可选）与 `params`（与向导同源）
-2. 配置 `.env`：`NLU_ENABLE=1`、`DEEPSEEK_API_KEY=sk-…`
+2. 配置 `.env`：`NLU_ENABLE=1`、`DEEPSEEK_API_KEY=sk-…`；槽位由 DeepSeek 提取，预筛仅缩小候选命令
 3. 判定得到 `{ domain, action, slots }` 后调用 `dispatchNluIntent(ctx, intent)`，不要直接调 `execute*Action`
 4. 缺参时由 `InteractionSession`（`nlu_slotfill`）多轮追问，与向导共用 `paramCollector`
 

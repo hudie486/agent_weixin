@@ -1,21 +1,21 @@
+/**
+ * NLU 交互话术润色（DeepSeek / 本地 fallback）。
+ *
+ * 仅用于 NLU 流程中的对话：填参追问、消歧、澄清、取消、校验重试等。
+ * 命令执行结果（列表、成功/失败、业务数据）由各模块 replyText/replyPlain 直发，不得调用本模块。
+ */
 import type { CommandParamDef } from "../framework/commands/descriptor.js";
 import { loadNluLlmConfig } from "./nluConfig.js";
 
-export type NluStyleKind =
-  | "slot_prompt"
-  | "disambiguate"
-  | "error"
-  | "cancel"
-  | "clarify"
-  | "info";
+/** 仅 NLU 交互话术，不含命令结果 */
+export type NluStyleKind = "slot_prompt" | "disambiguate" | "error" | "cancel" | "clarify";
 
 export type NluStyleContext = {
   param?: CommandParamDef;
-  commandSummary?: string;
 };
 
 const STYLE_SYSTEM = [
-  "你是微信/QQ 机器人的对话文案润色器。",
+  "你是微信/QQ 机器人的 NLU 填参对话润色器。只处理「追问/消歧/澄清」类短回复，不处理命令执行结果或数据列表。",
   "把用户提供的「草稿」改写成简短、口语化、像真人客服的回复。",
   "硬性规则：",
   "1. 整段回复最多使用 0 或 1 个 emoji，放在句首或句中自然位置，不要堆砌",
@@ -23,7 +23,7 @@ const STYLE_SYSTEM = [
   "3. 保留草稿里的关键信息（要用户填什么、有哪些可选项、如何取消）",
   "4. 密码/口令类参数优先用 🔑；成功/完成可用 ✅；警告可用 ⚠️；取消可用简短口语",
   "5. 输出纯文本，不要 markdown、不要引号包裹",
-  "6. 尽量 1～2 句话；若草稿含多行选项，可保留简短分行但不要数字序号",
+  "6. 单行追问尽量 1～2 句话；多行选项列表须保留换行，每行一条",
   "7. 只输出润色后的正文，不要解释",
 ].join("\n");
 
@@ -36,7 +36,7 @@ function stripWizardNumbering(text: string): string {
     .trim();
 }
 
-/** 无 LLM 时的启发式润色 */
+/** 无 LLM 时的启发式润色（仅 NLU 交互） */
 export function fallbackStyleNluDialogue(
   draft: string,
   kind: NluStyleKind,
@@ -90,11 +90,11 @@ export async function styleNluDialogue(
           ? "这是参数校验失败后的提示"
           : kind === "cancel"
             ? "这是用户取消操作后的确认"
-            : "这是对话中的提示";
+            : "这是 NLU 需要用户补充说明";
 
   const paramHint = ctx?.param
     ? `\n参数类型=${ctx.param.kind} 参数名=${ctx.param.label}`
-  : "";
+    : "";
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(cfg.timeoutMs, 15_000));

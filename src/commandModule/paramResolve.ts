@@ -11,6 +11,7 @@ import { getJobsStateSnapshot } from "../plugins/periodic/state.js";
 import type { PeriodicJob } from "../plugins/periodic/types.js";
 import { periodicJobVisibleToUser } from "../shared/notifyTarget.js";
 import { listManagedUsers } from "../modules/user/store.js";
+import { formatUserChoices, resolveUserByRef } from "../modules/user/userResolve.js";
 
 export type ParamResolveOutcome =
   | { ok: true; value: string }
@@ -67,19 +68,17 @@ export function resolveParamValue(
 
   if (param.kind === "userId") {
     const users = listManagedUsers().filter((u) => u.enabled !== false);
-    const exact = users.find((u) => u.userId === t);
-    if (exact) return { ok: true, value: exact.userId };
-    const fuzzy = users.filter((u) => u.userId.toLowerCase().includes(t.toLowerCase()));
-    if (fuzzy.length === 1) return { ok: true, value: fuzzy[0]!.userId };
-    if (fuzzy.length > 1) {
+    const r = resolveUserByRef(t, users);
+    if (r.status === "found") return { ok: true, value: r.user.userId };
+    if (r.status === "ambiguous") {
       return {
         ok: false,
-        error: "匹配到多个用户，请发完整 userId 或序号",
-        choices: fuzzy.slice(0, 8).map((u, i) => `${i + 1}. ${u.userId}`).join("\n"),
-        choiceValues: fuzzy.map((u) => u.userId),
+        error: r.hint,
+        choices: formatUserChoices(r.users),
+        choiceValues: r.users.map((u) => u.userId),
       };
     }
-    return { ok: false, error: "未找到该用户" };
+    return { ok: false, error: r.hint };
   }
 
   if (param.validate) {
@@ -117,6 +116,18 @@ export function buildParamOptionsList(
       error: "请选择项目别名（回复序号，或直接发别名）：",
       choices: aliases.map((a, i) => `${i + 1}. ${a}`).join("\n"),
       choiceValues: aliases,
+    };
+  }
+  if (param.kind === "userId") {
+    const users = listManagedUsers().filter((u) => u.enabled !== false);
+    if (!users.length) {
+      return { ok: false, error: "当前没有已登记用户。" };
+    }
+    return {
+      ok: false,
+      error: "请选择目标用户（回复序号，或直接发简称/userId）：",
+      choices: formatUserChoices(users),
+      choiceValues: users.map((u) => u.userId),
     };
   }
   return null;

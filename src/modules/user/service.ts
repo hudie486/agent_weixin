@@ -13,7 +13,16 @@ import {
   updateAdminPasswordByVerifiedAdmin,
   verifyAdminPassword,
 } from "../../security/adminAuth.js";
-import { listManagedUsers, removeManagedUser, upsertManagedUser } from "./store.js";
+import {
+  getManagedUser,
+  listManagedUsers,
+  normalizeUserShortName,
+  removeManagedUser,
+  setManagedUserShortName,
+  upsertManagedUser,
+} from "./store.js";
+import { formatUserLabel } from "./userResolve.js";
+import type { ManagedUser } from "./store.js";
 import { adminLoginSuccessMessage } from "../../security/gate.js";
 import { connectQqBotFromCommand, disconnectQqBot, showQqBotStatus } from "../qq/botAdmin.js";
 import { renderQqEndUserOnboardingGuide, replyAddUserPlatformPicker } from "./onboarding.js";
@@ -271,25 +280,65 @@ export async function executeUserAction(ctx: FrameworkContext, action: UserActio
     return;
   }
 
+  if (action === "shortname") {
+    const name = rest.trim().split(/\s+/).filter(Boolean)[0]?.trim() ?? "";
+    if (!name) {
+      await notify.replyText(ctx.envelope ?? ctx.userId, "用法：/用户 简称 <名称>", "warn");
+      return;
+    }
+    try {
+      const normalized = normalizeUserShortName(name);
+      if (!normalized) {
+        await notify.replyText(ctx.envelope ?? ctx.userId, "简称无效，请使用 2～24 个字符。", "warn");
+        return;
+      }
+      upsertManagedUser(uid, { enabled: true });
+      setManagedUserShortName(uid, normalized);
+      await notify.replyText(
+        ctx.envelope ?? ctx.userId,
+        `已设置你的简称为「${normalized}」。对话里我会用这个称呼你；管理员也可用此简称指定你。`,
+        "success",
+      );
+    } catch (e) {
+      await notify.replyText(
+        ctx.envelope ?? ctx.userId,
+        e instanceof Error ? e.message : String(e),
+        "error",
+      );
+    }
+    return;
+  }
+
   if (action === "list") {
     const users = listManagedUsers();
+    const formatLine = (u: ManagedUser, adminFlag: boolean) => {
+      const base = formatUserLabel(u);
+      return `${base} · 管理员=${adminFlag ? "是（会话）" : "否"} · 启用=${u.enabled ? "是" : "否"}`;
+    };
+    let lines: string[] = [];
     if (isAdminVerified(uid)) {
       const merged = new Map(users.map((u) => [u.userId, u] as const));
       if (!merged.has(uid)) {
         merged.set(uid, upsertManagedUser(uid, { enabled: true }));
       }
-      const lines = Array.from(merged.values()).map(
-        (u) => `${u.userId} · 管理员=${shownAdminFlag(uid, u.userId) ? "是（会话）" : "否"} · 启用=${u.enabled ? "是" : "否"}`,
-      );
-      await notify.replyPlain(ctx.envelope ?? ctx.userId, joinWxLines(lines));
-      return;
+      lines = Array.from(merged.values()).map((u) => formatLine(u, shownAdminFlag(uid, u.userId)));
+    } else {
+      const admins = listVerifiedAdmins().filter((id) => id !== uid);
+      const self: ManagedUser =
+        getManagedUser(uid) ?? { userId: uid, enabled: true, createdAt: Date.now(), updatedAt: Date.now() };
+      lines = [
+        formatLine(self, shownAdminFlag(uid, uid)),
+        ...admins.map((id) => {
+          const u = getManagedUser(id);
+          const label = u ? formatUserLabel(u) : id;
+          return `${label} · 管理员=是（会话） · 启用=是`;
+        }),
+      ];
     }
-    const admins = listVerifiedAdmins().filter((id) => id !== uid);
-    const lines = [
-      `${uid} · 管理员=${shownAdminFlag(uid, uid) ? "是（会话）" : "否"} · 启用=是`,
-      ...admins.map((id) => `${id} · 管理员=是（会话） · 启用=是`),
-    ];
-    await notify.replyPlain(ctx.envelope ?? ctx.userId, joinWxLines(lines));
+    await notify.replyPlain(
+      ctx.envelope ?? ctx.userId,
+      joinWxLines(["📋 当前已登记用户", "", ...lines]),
+    );
     return;
   }
 

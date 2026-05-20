@@ -30,11 +30,117 @@ export function extractEntityHintFromUtterance(utterance: string, desc: CommandD
   return t;
 }
 
+/** 从「用户 + 内容」片段拆分（如 宝宝，你好可爱） */
+export function splitUserTargetAndMessage(hint: string): { userRef: string; text: string } | null {
+  let t = hint.replace(/^[:：\s]+/, "").trim();
+  if (!t) return null;
+
+  const comma = t.search(/[,，]/);
+  if (comma > 0) {
+    let userRef = t.slice(0, comma).trim();
+    const text = t.slice(comma + 1).trim();
+    const colonInUser = userRef.search(/[:：]/);
+    if (colonInUser >= 0) userRef = userRef.slice(colonInUser + 1).trim();
+    userRef = userRef.replace(/\s+/g, "");
+    if (userRef && text) return { userRef, text };
+  }
+
+  const colon = t.match(/^([^:：]+)[:：]\s*(.+)$/s);
+  if (colon) {
+    const userRef = colon[1]!.trim().replace(/\s+/g, "");
+    const text = colon[2]!.trim();
+    if (userRef && text) return { userRef, text };
+  }
+
+  return null;
+}
+
+function extractNotifyPayload(utterance: string, desc: CommandDescriptor): string {
+  const fromCatalog = extractEntityHintFromUtterance(utterance, desc);
+  const m = utterance.match(
+    /(?:通知|发给|私信|告诉)\s*[:：]?\s*([^,，:：]+?)\s*[,，:：]\s*(.+)$/i,
+  );
+  if (m?.[1] && m[2]) {
+    return `${m[1]!.trim().replace(/\s+/g, "")}，${m[2]!.trim()}`;
+  }
+  return fromCatalog;
+}
+
+/** 从整句提取要设置的简称（如「设置我的简称为：qq管理员」） */
+export function extractShortNameFromUtterance(
+  utterance: string,
+  desc: CommandDescriptor,
+): string | null {
+  const direct = [
+    /(?:设置|改|修改).{0,16}简称\s*(?:为|是)?\s*[:：]?\s*(.+)$/iu,
+    /(?:我的|自己).{0,8}简称\s*(?:为|是)?\s*[:：]?\s*(.+)$/iu,
+    /简称\s*(?:为|是)?\s*[:：]\s*(.+)$/iu,
+    /称呼\s*(?:为|是)?\s*[:：]\s*(.+)$/iu,
+  ];
+  for (const re of direct) {
+    const m = utterance.trim().match(re);
+    if (m?.[1]) {
+      const v = m[1].trim().replace(/\s+/g, "");
+      if (v.length >= 2 && v.length <= 24) return v;
+    }
+  }
+
+  const hint = extractEntityHintFromUtterance(utterance, desc);
+  if (!hint) return null;
+  const afterColon = hint.match(/[:：]\s*(.+)$/);
+  if (afterColon?.[1]) {
+    const v = afterColon[1].trim().replace(/\s+/g, "");
+    if (v.length >= 2 && v.length <= 24) return v;
+  }
+  const compact = hint.replace(/\s+/g, "");
+  if (compact.length >= 2 && compact.length <= 24 && !/(设置|修改|简称|称呼)/.test(compact)) {
+    return compact;
+  }
+  return null;
+}
+
+function mergeShortnameSlots(
+  desc: CommandDescriptor,
+  utterance: string,
+  slots: Record<string, string>,
+): Record<string, string> {
+  const out = { ...slots };
+  if (out.shortName?.trim()) return out;
+  const name = extractShortNameFromUtterance(utterance, desc);
+  if (name) out.shortName = name;
+  return out;
+}
+
+function mergeNotifySlots(
+  desc: CommandDescriptor,
+  utterance: string,
+  slots: Record<string, string>,
+): Record<string, string> {
+  const hint = extractNotifyPayload(utterance, desc);
+  if (!hint) return { ...slots };
+
+  const out = { ...slots };
+  const pair = splitUserTargetAndMessage(hint);
+  if (pair) {
+    if (!out.userId?.trim()) out.userId = pair.userRef;
+    if (!out.text?.trim()) out.text = pair.text;
+    return out;
+  }
+  return out;
+}
+
 export function mergeInferredSlots(
   desc: CommandDescriptor,
   utterance: string,
   slots: Record<string, string>,
 ): Record<string, string> {
+  if (desc.domain === "user" && desc.action === "shortname") {
+    return mergeShortnameSlots(desc, utterance, slots);
+  }
+  if (desc.domain === "user" && desc.action === "notify") {
+    return mergeNotifySlots(desc, utterance, slots);
+  }
+
   const hint = extractEntityHintFromUtterance(utterance, desc);
   if (!hint) return { ...slots };
 
@@ -46,6 +152,7 @@ export function mergeInferredSlots(
       if (token && token.length <= 48) out[p.name] = token;
       continue;
     }
+    // userId 须经 resolve 校验，不可把整句原文写入槽位
     if (p.kind === "periodicJobId" || p.kind === "codeAlias" || p.kind === "rest") {
       out[p.name] = hint;
     }

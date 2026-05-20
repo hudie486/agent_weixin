@@ -22,7 +22,14 @@ function buildSystemPrompt(manifests: NluCommandManifest[]): string {
   });
   return [
     "你是微信/QQ 机器人的命令意图解析器。只输出 JSON，不要 markdown。",
-    "从用户自然语言中识别要执行的命令，填入 slots 对象（键为参数名）。",
+    "候选命令已由预筛缩小；你必须从用户整句中提取 slots（键名与 slots 列表完全一致）。",
+    "槽位规则：",
+    "- 用户已给出的信息必须写入对应 slot；未提及的必填项留空或省略该键",
+    "- 不要把整句原文塞进单个 slot；禁止臆造用户未说的内容",
+    "- user.notify：对象→userId（简称或 userId），正文→text，如「通知宝宝，你好」→ userId=宝宝,text=你好",
+    "- user.shortname：如「简称为：qq管理员」→ shortName=qq管理员",
+    "- user.login：仅当句中出现密码时才填 password",
+    "- periodicJobId / codeAlias：填用户提到的简称或关键词",
     "输出格式之一：",
     '{"intent":{"domain":"user","action":"add","slots":{},"confidence":0.9}}',
     '{"none":true}',

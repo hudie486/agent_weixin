@@ -10,6 +10,7 @@ export type UserAction =
   | "add"
   | "remove"
   | "list"
+  | "shortname"
   | "inspect"
   | "password"
   | "call"

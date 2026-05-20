@@ -6,7 +6,8 @@ import { formatOptionsList, formatWizardMenuIndex } from "../wizard/formatMenu.j
 import type { MenuOptionDef } from "../wizard/types.js";
 import { buildParamOptionsList, resolveParamValue } from "./paramResolve.js";
 import { draftNluParamPrompt } from "./nluDialogue.js";
-import { extractEntityHintFromUtterance } from "./utteranceSlots.js";
+import { slotsToCollected } from "../framework/commands/nluManifest.js";
+import { extractEntityHintFromUtterance, mergeInferredSlots } from "./utteranceSlots.js";
 
 export function getActiveParams(
   catalog: CommandCatalog,
@@ -113,7 +114,52 @@ export function isParamsComplete(
   return catalog.missingParams(desc, collected).length === 0;
 }
 
-const SILENT_INFER_KINDS = new Set(["periodicJobId", "codeAlias", "userId"]);
+/** 校验已填 ID 类槽位是否真能解析；不能解析的剔除以免误判「已填完」 */
+export function normalizeResolvedSlots(
+  ctx: FrameworkContext,
+  catalog: CommandCatalog,
+  desc: CommandDescriptor,
+  collected: Record<string, string>,
+): Record<string, string> {
+  const out = { ...collected };
+  for (const p of getActiveParams(catalog, desc, out)) {
+    const v = out[p.name]?.trim();
+    if (!v) continue;
+    if (p.kind === "userId" || p.kind === "periodicJobId" || p.kind === "codeAlias") {
+      const r = resolveParamValue(ctx, p, v);
+      if (r.ok && r.value) out[p.name] = r.value;
+      else delete out[p.name];
+    }
+  }
+  return out;
+}
+
+/** DeepSeek 返回的 slots：仅做 ID 类解析校验，不再用规则从整句覆写槽位 */
+export function finalizeLlmSlots(
+  ctx: FrameworkContext,
+  catalog: CommandCatalog,
+  desc: CommandDescriptor,
+  llmSlots: Record<string, string>,
+): Record<string, string> {
+  const collected = slotsToCollected(desc, llmSlots);
+  return normalizeResolvedSlots(ctx, catalog, desc, collected);
+}
+
+/** 无 DeepSeek 时的回退：规则从整句抽槽 */
+export function prepareNluCollected(
+  ctx: FrameworkContext,
+  catalog: CommandCatalog,
+  desc: CommandDescriptor,
+  utterance: string,
+  slots: Record<string, string>,
+): Record<string, string> {
+  let collected = mergeInferredSlots(desc, utterance, { ...slots });
+  if (utterance) {
+    collected = tryInferAndResolveSlots(ctx, catalog, desc, utterance, collected);
+    collected = normalizeResolvedSlots(ctx, catalog, desc, collected);
+  }
+  return collected;
+}
 
 /** 用原始整句推断槽位并尝试静默解析（唯一命中则写入 collected） */
 export function tryInferAndResolveSlots(
@@ -130,7 +176,7 @@ export function tryInferAndResolveSlots(
     if (out[p.name]?.trim()) continue;
     // 口令/密钥必须由用户下一条消息提供，不能把触发句当成密码
     if (p.kind === "secret") continue;
-    if (!SILENT_INFER_KINDS.has(p.kind)) continue;
+    if (p.kind !== "periodicJobId" && p.kind !== "codeAlias" && p.kind !== "userId") continue;
 
     const raw =
       p.kind === "periodicJobId" || p.kind === "codeAlias"

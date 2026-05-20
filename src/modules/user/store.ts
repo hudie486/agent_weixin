@@ -3,6 +3,8 @@ import path from "node:path";
 
 export type ManagedUser = {
   userId: string;
+  /** 对话/命令中使用的简称（用户自行设置，全局唯一） */
+  shortName?: string;
   enabled: boolean;
   createdAt: number;
   updatedAt: number;
@@ -50,8 +52,10 @@ export function loadUsersState(): UserStoreState {
         .map((u) => {
           const userId = String(u?.userId ?? "").trim();
           if (!userId) return null;
+          const shortName = String(u?.shortName ?? "").trim();
           return {
             userId,
+            shortName: shortName || undefined,
             enabled: u?.enabled !== false,
             createdAt: Number(u?.createdAt) || Date.now(),
             updatedAt: Number(u?.updatedAt) || Date.now(),
@@ -105,6 +109,44 @@ export function upsertManagedUser(userId: string, patch?: Partial<Pick<ManagedUs
   st.users[idx] = next;
   saveUsersState(st);
   return next;
+}
+
+const SHORT_NAME_MAX = 24;
+
+export function normalizeUserShortName(raw: string): string | null {
+  const s = raw.trim().replace(/[/\\:*?"<>|@\s]/g, "").slice(0, SHORT_NAME_MAX);
+  if (s.length < 2) return null;
+  return s;
+}
+
+export function setManagedUserShortName(userId: string, shortName: string | null): ManagedUser {
+  const uid = userId.trim();
+  if (!uid) throw new Error("userId 不能为空");
+  const normalized = shortName == null ? null : normalizeUserShortName(shortName);
+  if (shortName != null && !normalized) throw new Error("简称不能为空");
+  const st = loadUsersState();
+  const idx = st.users.findIndex((u) => u.userId === uid);
+  if (idx < 0) throw new Error("用户不在管理列表，请先完成平台登记");
+  if (normalized) {
+    const clash = st.users.find(
+      (u) => u.userId !== uid && u.shortName?.trim().toLowerCase() === normalized.toLowerCase(),
+    );
+    if (clash) throw new Error(`简称「${normalized}」已被其他用户使用`);
+  }
+  const cur = st.users[idx]!;
+  const next: ManagedUser = {
+    ...cur,
+    shortName: normalized ?? undefined,
+    updatedAt: Date.now(),
+  };
+  st.users[idx] = next;
+  saveUsersState(st);
+  return next;
+}
+
+export function getUserDisplayName(userId: string): string {
+  const u = getManagedUser(userId);
+  return u?.shortName?.trim() || userId;
 }
 
 export function removeManagedUser(userId: string): boolean {

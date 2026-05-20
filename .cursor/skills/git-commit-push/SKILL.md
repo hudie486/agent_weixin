@@ -1,9 +1,10 @@
 ---
 name: git-commit-push
 description: >-
-  Stages, commits, and pushes repository changes with project git safety rules.
-  Use when the user asks to git add, git commit, push to remote, sync with
-  origin/main, or publish code to GitHub (including via HTTP proxy on Windows).
+  Updates README.md to match code changes, then stages, commits, and pushes with
+  project git safety rules. Use when the user asks to git add, git commit, push
+  to remote, sync with origin/main, or publish code to GitHub (including via HTTP
+  proxy on Windows).
 disable-model-invocation: true
 ---
 
@@ -38,7 +39,24 @@ git log -8 --oneline
 
 Review staged/unstaged changes; confirm no secrets or build artifacts that should stay ignored (`dist/`, `data/`).
 
-### 2. Stage
+### 2. Update README (required before every commit)
+
+**Always edit [README.md](../../README.md) at the repo root before `git add`.** README is the user-facing contract; it must reflect what ships in this commit.
+
+1. Read `git diff` (and new/untracked files) and list **user-visible** deltas: commands, env vars, platforms, wizards, APIs, setup steps, behavior changes.
+2. Update the matching README sections (do not append a changelog unless the repo already uses one):
+   - **快速开始** — install/build/run steps
+   - **主要能力** / platform sections — capabilities table
+   - **微信中的命令** / **QQ 机器人** — slash commands and subcommands
+   - **消息交互流程** — routing or outbound behavior if architecture changed
+   - **配置** — new or renamed `.env` keys (cross-check [`.env.example`](../../.env.example))
+3. Remove or correct README text that the commit makes **outdated** (deleted commands, old Python/cron notes, wrong paths).
+4. Keep edits **minimal and accurate** — document behavior, not implementation detail. Match existing README language (Chinese for user text) and table style.
+5. **Skip README edits only** when the diff is purely internal (refactor, tests, comments) with zero user-visible impact; state that briefly in the commit body.
+
+Include `README.md` in the same commit as the code changes.
+
+### 3. Stage
 
 ```bash
 git add -A
@@ -46,9 +64,9 @@ git add -A
 
 Re-run `git status` and unstage anything that must not ship (e.g. accidental `.env`).
 
-### 3. Commit message
+### 4. Commit message
 
-Match recent repo style: short imperative subject (`feat:`, `fix:`, `refactor:`, `docs:`), optional body with **why**.
+Match recent repo style: short imperative subject (`feat:`, `fix:`, `refactor:`, `docs:`), optional body with **why**. Mention README updates in the body when non-trivial.
 
 PowerShell (two `-m` flags):
 
@@ -56,7 +74,7 @@ PowerShell (two `-m` flags):
 git commit -m "feat: short summary" -m "Optional body explaining why."
 ```
 
-### 4. Push
+### 5. Push
 
 **HTTPS remote, no proxy:**
 
@@ -77,7 +95,7 @@ Use the proxy URL the user gives; default in this project has been `http://127.0
 
 **SSH remote:** proxy env vars do not apply; configure SSH `ProxyCommand` separately if needed.
 
-### 5. Verify
+### 6. Verify
 
 ```bash
 git status
@@ -89,6 +107,7 @@ Expect: working tree clean; branch up to date with `origin/<branch>` (or ahead b
 
 ```
 - [ ] git status / diff / log reviewed
+- [ ] README.md updated for user-visible changes (or explicitly N/A)
 - [ ] No secrets in staged files
 - [ ] git add (and status rechecked)
 - [ ] Commit message matches change purpose

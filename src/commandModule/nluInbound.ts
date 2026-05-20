@@ -32,19 +32,15 @@ import type { CommandParamDef } from "../framework/commands/descriptor.js";
 import {
   applyParamAnswer,
   buildNluParamPromptDraft,
+  finalizeLlmSlots,
   findNextParamIndex,
   getActiveParams,
   isParamsComplete,
-  tryInferAndResolveSlots,
+  prepareNluCollected,
 } from "./paramCollector.js";
-import { mergeInferredSlots } from "./utteranceSlots.js";
-import { classifyNluWithLlm } from "./nluLlmClient.js";
-import {
-  domainsFromHits,
-  exportManifestsForDomains,
-  prefilterNluCommands,
-  type PrefilterHit,
-} from "./nluPrefilter.js";
+import { classifyIntentWithNluLlm } from "./nluResolve.js";
+import { commandToManifest } from "../framework/commands/nluManifest.js";
+import { prefilterNluCommands, type PrefilterHit } from "./nluPrefilter.js";
 
 const EXIT_WORDS = new Set(["退出", "exit", "quit", "取消", "cancel"]);
 
@@ -53,7 +49,8 @@ function isExitMessage(text: string): boolean {
   return EXIT_WORDS.has(t) || EXIT_WORDS.has(t.toLowerCase());
 }
 
-async function replyNluStyled(
+/** NLU 交互话术（填参/消歧/澄清）；命令执行结果由各业务模块直发，不走润色 */
+async function replyNluInteraction(
   ctx: FrameworkContext,
   inbound: InboundEnvelope,
   draft: string,
@@ -71,7 +68,7 @@ async function promptNluParam(
   collected: Record<string, string>,
 ): Promise<{ choiceValues?: string[] }> {
   const built = buildNluParamPromptDraft(ctx, param, collected);
-  await replyNluStyled(ctx, inbound, built.draft, "slot_prompt", { param });
+  await replyNluInteraction(ctx, inbound, built.draft, "slot_prompt", { param });
   return { choiceValues: built.choiceValues };
 }
 
@@ -127,10 +124,7 @@ async function startSlotfillOrDispatch(
   if (!desc) return false;
 
   const utterance = originalUtterance?.trim() ?? "";
-  let collected = mergeInferredSlots(desc, utterance, { ...intent.slots });
-  if (utterance) {
-    collected = tryInferAndResolveSlots(ctx, catalog, desc, utterance, collected);
-  }
+  const collected = finalizeLlmSlots(ctx, catalog, desc, { ...intent.slots });
 
   if (isParamsComplete(catalog, desc, collected)) {
     return dispatchNluIntent(ctx, { ...intent, slots: collected });
@@ -156,7 +150,8 @@ async function startSlotfillOrDispatch(
   return true;
 }
 
-async function resolveFromHits(
+/** 无 DeepSeek 时：预筛直接定意图 + 规则抽槽 */
+async function resolveFromHitsLegacy(
   ctx: FrameworkContext,
   inbound: InboundEnvelope,
   hits: PrefilterHit[],
@@ -166,13 +161,17 @@ async function resolveFromHits(
   if (hits.length === 0) return false;
   if (hits.length === 1) {
     const h = hits[0]!;
+    const catalog = getCommandCatalog();
+    const desc = catalog.get(h.manifest.domain, h.manifest.action);
+    if (!desc) return false;
+    const collected = prepareNluCollected(ctx, catalog, desc, originalUtterance, { ...h.slots });
     return startSlotfillOrDispatch(
       ctx,
       inbound,
       {
         domain: h.manifest.domain,
         action: h.manifest.action,
-        slots: h.slots,
+        slots: collected,
         confidence: 1,
       },
       statePath,
@@ -187,8 +186,37 @@ async function resolveFromHits(
     originalUtterance,
   };
   setSession(iState, inbound.userId, session, statePath);
-  await replyNluStyled(ctx, inbound, draftNluDisambiguate(session.candidates), "disambiguate");
+  await replyNluInteraction(ctx, inbound, draftNluDisambiguate(session.candidates), "disambiguate");
   return true;
+}
+
+async function resolveNluWithLlm(
+  ctx: FrameworkContext,
+  inbound: InboundEnvelope,
+  text: string,
+  hits: PrefilterHit[],
+  statePath: string,
+): Promise<boolean> {
+  const classified = await classifyIntentWithNluLlm(text, hits);
+  if (classified.ok === false) {
+    if (classified.kind === "clarify") {
+      await replyNluInteraction(ctx, inbound, classified.text, "clarify");
+      return true;
+    }
+    return false;
+  }
+  return startSlotfillOrDispatch(
+    ctx,
+    inbound,
+    {
+      domain: classified.intent.domain,
+      action: classified.intent.action,
+      slots: classified.intent.slots,
+      confidence: classified.intent.confidence,
+    },
+    statePath,
+    text,
+  );
 }
 
 export async function handleNluSlotMessage(
@@ -207,7 +235,7 @@ export async function handleNluSlotMessage(
 
   if (isExitMessage(text)) {
     setSession(iState, inbound.userId, null, statePath);
-    await replyNluStyled(ctx, inbound, draftNluCancel(), "cancel");
+    await replyNluInteraction(ctx, inbound, draftNluCancel(), "cancel");
     return true;
   }
 
@@ -220,14 +248,25 @@ export async function handleNluSlotMessage(
     if (!pick) {
       if (Number.isFinite(n) && Math.floor(n) === session.candidates.length + 1) {
         setSession(iState, inbound.userId, null, statePath);
-        await replyNluStyled(ctx, inbound, draftNluCancel(), "cancel");
+        await replyNluInteraction(ctx, inbound, draftNluCancel(), "cancel");
         return true;
       }
-      await replyNluStyled(ctx, inbound, draftNluInvalidChoice(), "error");
+      await replyNluInteraction(ctx, inbound, draftNluInvalidChoice(), "error");
       return true;
     }
     const utterance = session.originalUtterance ?? "";
     setSession(iState, inbound.userId, null, statePath);
+    const desc = getCommandCatalog().get(pick.domain, pick.action);
+    if (!desc) return false;
+    const narrowHit: PrefilterHit = {
+      manifest: commandToManifest(desc),
+      descriptor: desc,
+      slots: {},
+      score: 1,
+    };
+    if (loadNluLlmConfig()) {
+      return resolveNluWithLlm(ctx, inbound, utterance, [narrowHit], statePath);
+    }
     return startSlotfillOrDispatch(
       ctx,
       inbound,
@@ -292,12 +331,12 @@ export async function handleNluSlotMessage(
   if ("error" in applied) {
     if (applied.error === "__exit__") {
       setSession(iState, inbound.userId, null, statePath);
-      await replyNluStyled(ctx, inbound, draftNluCancel(), "cancel");
+      await replyNluInteraction(ctx, inbound, draftNluCancel(), "cancel");
       return true;
     }
     const errMsg = typeof applied.error === "string" ? applied.error.split("\n")[0]! : "输入无效";
     const built = buildNluParamPromptDraft(ctx, param, session.collected);
-    await replyNluStyled(ctx, inbound, `${errMsg}\n${built.draft}`, "error", { param });
+    await replyNluInteraction(ctx, inbound, `${errMsg}\n${built.draft}`, "error", { param });
     if (Array.isArray(applied.choiceValues)) {
       const next: NluSlotfillSession = {
         ...session,
@@ -343,38 +382,17 @@ async function tryNluInterruptWizard(
   if (!session || session.kind !== "catalog_wizard") return false;
 
   const currentAction = session.collected._action;
-  const hits = prefilterNluCommands(text);
-  if (hits.length === 1 && hits[0]!.manifest.action !== currentAction) {
-    clearWizardPending(inbound.userId, statePath);
-    return startSlotfillOrDispatch(
-      ctx,
-      inbound,
-      {
-        domain: hits[0]!.manifest.domain,
-        action: hits[0]!.manifest.action,
-        slots: hits[0]!.slots,
-        confidence: 1,
-      },
-      statePath,
-      text,
-    );
-  }
-
+  const hits = prefilterNluCommands(text).filter((h) => h.manifest.action !== currentAction);
   if (!loadNluLlmConfig()) return false;
 
-  const domains = domainsFromHits(hits);
-  const manifests =
-    domains.length > 0
-      ? exportManifestsForDomains(domains)
-      : exportManifestsForDomains(["user", "code", "periodic", "env", "qq"]);
-
-  const llm = await classifyNluWithLlm(text, manifests, {
+  const classified = await classifyIntentWithNluLlm(text, hits, {
     wizardActive: true,
     stepId: session.stepId,
   });
-  if (llm.type !== "intent") return false;
-  if (llm.intent.confidence < nluInterruptMin()) return false;
-  if (llm.intent.action === currentAction && llm.intent.domain === session.collected._domain) {
+  if (classified.ok === false) return false;
+  const conf = classified.intent.confidence ?? 0;
+  if (conf < nluInterruptMin()) return false;
+  if (classified.intent.action === currentAction && classified.intent.domain === session.collected._domain) {
     return false;
   }
 
@@ -383,10 +401,10 @@ async function tryNluInterruptWizard(
     ctx,
     inbound,
     {
-      domain: llm.intent.domain,
-      action: llm.intent.action,
-      slots: llm.intent.slots,
-      confidence: llm.intent.confidence,
+      domain: classified.intent.domain,
+      action: classified.intent.action,
+      slots: classified.intent.slots,
+      confidence: classified.intent.confidence,
     },
     statePath,
     text,
@@ -447,36 +465,10 @@ export async function tryDispatchNluText(ctx: FrameworkContext, text: string): P
   }
 
   const hits = prefilterNluCommands(text);
-  if (hits.length >= 1) {
-    const ok = await resolveFromHits(ctx, inbound, hits, statePath, text);
-    if (ok) return true;
+
+  if (!loadNluLlmConfig()) {
+    return resolveFromHitsLegacy(ctx, inbound, hits, statePath, text);
   }
 
-  if (!loadNluLlmConfig()) return false;
-
-  const domains = domainsFromHits(hits);
-  const manifests =
-    domains.length > 0
-      ? exportManifestsForDomains(domains)
-      : exportManifestsForDomains(["user", "code", "periodic", "env", "qq"]);
-
-  const llm = await classifyNluWithLlm(text, manifests);
-  if (llm.type === "clarify") {
-    await replyNluStyled(ctx, inbound, llm.text, "clarify");
-    return true;
-  }
-  if (llm.type !== "intent") return false;
-
-  return startSlotfillOrDispatch(
-    ctx,
-    inbound,
-    {
-      domain: llm.intent.domain,
-      action: llm.intent.action,
-      slots: llm.intent.slots,
-      confidence: llm.intent.confidence,
-    },
-    statePath,
-    text,
-  );
+  return resolveNluWithLlm(ctx, inbound, text, hits, statePath);
 }

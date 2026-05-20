@@ -4,7 +4,11 @@ import {
   withAgentResume,
 } from "../../agent/index.js";
 import { getChatId, saveSessionStore, setChatId } from "../../session/store.js";
-import { baseChatSystemPrompt, periodicAgentInstruction } from "../../prompts/index.js";
+import {
+  baseChatSystemPrompt,
+  periodicAgentInstruction,
+  userDisplayNamesForAgent,
+} from "../../prompts/index.js";
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
 import { sanitizeWeChatAgentText } from "../../util/wxAgentReplySanitize.js";
 import { extractPeriodicProposal } from "../../handler/proposal.js";
@@ -32,6 +36,8 @@ export async function executeAgentConversation(ctx: FrameworkContext, text: stri
   }
 
   const sysParts = [baseChatSystemPrompt()];
+  const userRoster = userDisplayNamesForAgent();
+  if (userRoster) sysParts.push(userRoster);
   if (wantsPeriodicHint(text)) sysParts.push(periodicAgentInstruction());
   const promptForAgent = `${sysParts.join("\n\n")}\n\n用户：${text}`;
 
