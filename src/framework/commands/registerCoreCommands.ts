@@ -18,5 +18,6 @@ export function createCoreActionResolvers(): ActionResolvers {
     env: catalogResolverFor("env"),
     periodic: catalogResolverFor("periodic"),
     user: catalogResolverFor("user"),
+    qq: catalogResolverFor("qq"),
   };
 }

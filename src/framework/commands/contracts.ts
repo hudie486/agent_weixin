@@ -14,7 +14,7 @@ export type CommandInput = {
   domain: ModuleDomain;
   action: CommandAction;
   sub: string;
-  source: "slash" | "wizard" | "system";
+  source: "slash" | "wizard" | "nlu" | "system";
   userId: string;
   envelope?: InboundEnvelope;
 };

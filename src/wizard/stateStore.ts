@@ -1,68 +1,124 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { WizardPending, WizardStateFile } from "./types.js";
+import {
+  clearSession,
+  getSession,
+  interactionStateFilePath,
+  loadInteractionState,
+  saveInteractionState,
+  type CatalogWizardSession,
+  type InteractionStateFile,
+} from "../commandModule/interactionSession.js";
 
 export function wizardStateFilePath(): string {
-  return (
-    process.env.WIZARD_STATE_PATH?.trim() ||
-    path.join(process.cwd(), "data", "wizard-state.json")
-  );
+  return interactionStateFilePath();
 }
 
-function ttlMs(): number {
-  const v = Number(process.env.WIZARD_TTL_MS?.trim());
-  if (Number.isFinite(v) && v > 0) return Math.floor(v);
-  return 30 * 60 * 1000;
-}
-
-function atomicWrite(file: string, data: string): void {
-  const dir = path.dirname(file);
-  fs.mkdirSync(dir, { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, data, "utf-8");
-  fs.renameSync(tmp, file);
+function toWizardPending(s: CatalogWizardSession): WizardPending {
+  return {
+    wizardId: s.wizardId,
+    stepId: s.stepId,
+    collected: s.collected,
+    updatedAt: s.updatedAt,
+    dynamicMenuOptions: s.dynamicMenuOptions,
+  };
 }
 
 export function loadWizardState(file = wizardStateFilePath()): WizardStateFile {
-  try {
-    const raw = fs.readFileSync(file, "utf-8");
-    const j = JSON.parse(raw) as WizardStateFile;
-    if (j.version !== 1 || !j.pendingByUserId || typeof j.pendingByUserId !== "object") {
-      return { version: 1, pendingByUserId: {} };
+  const iState = loadInteractionState(file);
+  const pendingByUserId: Record<string, WizardPending> = {};
+  for (const [uid, s] of Object.entries(iState.pendingByUserId)) {
+    if (s.kind === "catalog_wizard") {
+      pendingByUserId[uid] = toWizardPending(s);
     }
-    return j;
-  } catch {
-    return { version: 1, pendingByUserId: {} };
   }
+  return { version: 1, pendingByUserId };
+}
+
+function mergeWizardIntoInteraction(
+  iState: InteractionStateFile,
+  wizardOnly: WizardStateFile,
+): InteractionStateFile {
+  const next: InteractionStateFile = {
+    version: 1,
+    pendingByUserId: { ...iState.pendingByUserId },
+  };
+  for (const uid of Object.keys(next.pendingByUserId)) {
+    if (next.pendingByUserId[uid]!.kind === "catalog_wizard") {
+      delete next.pendingByUserId[uid];
+    }
+  }
+  for (const [uid, p] of Object.entries(wizardOnly.pendingByUserId)) {
+    next.pendingByUserId[uid] = {
+      kind: "catalog_wizard",
+      wizardId: "catalog",
+      stepId: p.stepId,
+      collected: p.collected,
+      updatedAt: p.updatedAt,
+      dynamicMenuOptions: p.dynamicMenuOptions,
+    };
+  }
+  return next;
 }
 
 export function saveWizardState(state: WizardStateFile, file = wizardStateFilePath()): void {
-  atomicWrite(file, JSON.stringify(state, null, 2));
+  const iState = loadInteractionState(file);
+  const merged = mergeWizardIntoInteraction(iState, state);
+  saveInteractionState(merged, file);
 }
 
 export function getPendingRaw(state: WizardStateFile, userId: string): WizardPending | undefined {
   return state.pendingByUserId[userId];
 }
 
-export function isPendingExpired(p: WizardPending): boolean {
+function ttlMs(): number {
+  const v = Number(process.env.WIZARD_TTL_MS?.trim() ?? process.env.INTERACTION_TTL_MS?.trim());
+  if (Number.isFinite(v) && v > 0) return Math.floor(v);
+  return 30 * 60 * 1000;
+}
+
+export function isPendingExpired(p: { updatedAt: number }): boolean {
   return Date.now() - p.updatedAt > ttlMs();
 }
 
 export function clearWizardPending(userId: string, file = wizardStateFilePath()): void {
-  const state = loadWizardState(file);
-  setPending(state, userId, null, file);
+  const iState = loadInteractionState(file);
+  if (iState.pendingByUserId[userId]?.kind === "catalog_wizard") {
+    delete iState.pendingByUserId[userId];
+    saveInteractionState(iState, file);
+  }
 }
 
 export function setPending(
-  state: WizardStateFile,
+  _state: WizardStateFile,
   userId: string,
   pending: WizardPending | null,
   file = wizardStateFilePath(),
 ): void {
+  const iState = loadInteractionState(file);
   if (pending) {
-    state.pendingByUserId[userId] = { ...pending, updatedAt: Date.now() };
+    iState.pendingByUserId[userId] = {
+      kind: "catalog_wizard",
+      wizardId: "catalog",
+      stepId: pending.stepId,
+      collected: pending.collected,
+      updatedAt: Date.now(),
+      dynamicMenuOptions: pending.dynamicMenuOptions,
+    };
   } else {
-    delete state.pendingByUserId[userId];
+    const cur = iState.pendingByUserId[userId];
+    if (!cur || cur.kind === "catalog_wizard") {
+      delete iState.pendingByUserId[userId];
+    }
   }
-  saveWizardState(state, file);
+  saveInteractionState(iState, file);
+}
+
+/** 清除任意交互会话（向导 / NLU / 消歧） */
+export function clearAllInteractionPending(userId: string, file = wizardStateFilePath()): void {
+  clearSession(userId, file);
+}
+
+export function getInteractionSession(userId: string, file = wizardStateFilePath()) {
+  const iState = loadInteractionState(file);
+  return getSession(iState, userId);
 }

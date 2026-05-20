@@ -62,7 +62,7 @@ export type WizardTerminalStep = {
 
 export type WizardStep = WizardMenuStep | WizardDynamicMenuStep | WizardFreeTextStep | WizardTerminalStep;
 
-export type WizardCommandDomain = "code" | "periodic" | "env" | "user";
+export type WizardCommandDomain = "code" | "periodic" | "env" | "user" | "qq";
 
 export type WizardTerminalFn = (args: {
   ctx: WizardHandlerCtx;
@@ -70,6 +70,7 @@ export type WizardTerminalFn = (args: {
   collected: WizardCollected;
 }) => Promise<void>;
 
+/** @deprecated 使用 CommandCatalog + catalogWizard；勿再注册 WizardDef */
 export type WizardDef = {
   id: string;
   title: string;

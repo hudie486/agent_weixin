@@ -20,6 +20,7 @@ export type NluCommandManifest = {
   summary: string;
   keywords: string[];
   pathAliases: string[][];
+  nluHints: string[];
   requiresAdmin: boolean;
   slots: NluSlotManifest[];
 };
@@ -41,7 +42,7 @@ function slotsFromParams(params: readonly CommandParamDef[] | undefined): NluSlo
   }));
 }
 
-function commandToManifest(cmd: CommandDescriptor): NluCommandManifest {
+export function commandToManifest(cmd: CommandDescriptor): NluCommandManifest {
   return {
     intentId: `${cmd.domain}.${cmd.action}`,
     domain: cmd.domain,
@@ -50,6 +51,7 @@ function commandToManifest(cmd: CommandDescriptor): NluCommandManifest {
     summary: cmd.summary,
     keywords: [...cmd.keywords],
     pathAliases: (cmd.pathAliases ?? []).map((a) => [...a]),
+    nluHints: [...(cmd.nluHints ?? [])],
     requiresAdmin: cmd.requiresAdmin ?? false,
     slots: slotsFromParams(cmd.params),
   };

@@ -132,6 +132,11 @@ function parsePayloadJson(stdin: string): AddJobPayload {
   return payload as AddJobPayload;
 }
 
+/** 同步快照（NLU/参数解析等读路径；写操作后若需强一致请用 listJobsState） */
+export function getJobsStateSnapshot(): PeriodicStateFile {
+  return listState();
+}
+
 /** 对外：读取任务状态（含旧字段规范化） */
 export async function listJobsState(): Promise<PeriodicStateFile> {
   return listState();

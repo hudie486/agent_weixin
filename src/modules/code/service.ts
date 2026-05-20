@@ -10,6 +10,8 @@ import {
   loadCodeProjectsState,
   saveCodeProjectsState,
 } from "../../plugins/codeProjects/store.js";
+import type { CodeProject } from "../../plugins/codeProjects/types.js";
+import { resolveCodeProjectAlias } from "../../plugins/codeProjects/aliasResolve.js";
 import { parseSshProjectSpec } from "../../plugins/codeProjects/parseSsh.js";
 import { validateLocalProjectRoot } from "../../plugins/codeProjects/pathPolicy.js";
 import {
@@ -27,6 +29,18 @@ import { codeCommandSpecs } from "./keywords.js";
 import { formatCommandHelp } from "../../framework/commands/helpText.js";
 import { isAdminVerified } from "../../security/adminAuth.js";
 import { resolveCodeSourceUserId } from "../../shared/resourceAudience/store.js";
+
+function resolveProjectForUser(
+  userId: string,
+  ref: string,
+  opts?: { allowDefault?: boolean },
+): { project: CodeProject; alias: string } | { error: string } {
+  const r = resolveCodeProjectAlias(userId, ref, { allowDefault: opts?.allowDefault !== false });
+  if (r.status === "found" || r.status === "use_default") {
+    return { project: r.project, alias: r.alias };
+  }
+  return { error: r.hint };
+}
 
 export async function executeCodeAction(
   ctx: FrameworkContext,
@@ -115,14 +129,15 @@ export async function executeCodeAction(
   }
 
   if (action === "default") {
-    const alias = parts[0]?.trim();
-    if (!alias || !findProjectByAlias(state, uid, alias)) {
-      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /code default <alias>", "warn");
+    const aliasRef = parts[0]?.trim() ?? "";
+    const resolved = resolveProjectForUser(uid, aliasRef, { allowDefault: false });
+    if ("error" in resolved) {
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, resolved.error, aliasRef ? "error" : "warn");
       return;
     }
-    state.defaultAliasByUserId[uid] = alias;
+    state.defaultAliasByUserId[uid] = resolved.alias;
     saveCodeProjectsState(state);
-    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, `Default set to ${alias}`, "success");
+    await ctx.notify.replyText(ctx.envelope ?? ctx.userId, `Default set to ${resolved.alias}`, "success");
     return;
   }
 
@@ -144,12 +159,17 @@ export async function executeCodeAction(
     return;
   }
 
-  const alias = parts[0]?.trim() || getDefaultAlias(state, uid);
-  const project = alias ? findProjectByAlias(state, uid, alias) : null;
+  const aliasRef = parts[0]?.trim() ?? "";
+  const resolvedProject = resolveProjectForUser(uid, aliasRef);
+  const project = "project" in resolvedProject ? resolvedProject.project : null;
 
   if (action === "config") {
     if (!project) {
-      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Project not found", "error");
+      await ctx.notify.replyText(
+        ctx.envelope ?? ctx.userId,
+        "error" in resolvedProject ? resolvedProject.error : "Project not found",
+        "error",
+      );
       return;
     }
     if (!parts[1]) {
@@ -180,7 +200,11 @@ export async function executeCodeAction(
 
   if (action === "compile") {
     if (!project) {
-      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Project not found", "error");
+      await ctx.notify.replyText(
+        ctx.envelope ?? ctx.userId,
+        "error" in resolvedProject ? resolvedProject.error : "Project not found",
+        "error",
+      );
       return;
     }
     if (!project.hasBuildScript) {
@@ -251,8 +275,11 @@ export async function executeCodeAction(
     let target = project;
     let prompt = instruction;
     if (!target && parts.length >= 2) {
-      target = findProjectByAlias(state, uid, parts[0] ?? "");
-      prompt = parts.slice(1).join(" ").trim();
+      const fixResolved = resolveProjectForUser(uid, parts[0] ?? "", { allowDefault: false });
+      if ("project" in fixResolved) {
+        target = fixResolved.project;
+        prompt = parts.slice(1).join(" ").trim();
+      }
     }
     if (!target || target.kind === "ssh" || !target.localPath) {
       await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Fix requires a local project.", "error");

@@ -2,7 +2,14 @@ import type { FrameworkContext } from "../contracts/module.js";
 import type { ModuleDomain } from "../contracts/module.js";
 
 /** 参数类型（面向 NLU / 向导统一建模） */
-export type CommandParamKind = "enum" | "text" | "secret" | "userId" | "rest";
+export type CommandParamKind =
+  | "enum"
+  | "text"
+  | "secret"
+  | "userId"
+  | "rest"
+  | "periodicJobId"
+  | "codeAlias";
 
 export type CommandEnumOption = {
   value: string;
@@ -46,6 +53,8 @@ export type CommandDescriptor = {
   buildSub: (collected: Record<string, string>) => string;
   /** 从 slash rest 预填 collected（可选） */
   parseSub?: (rest: string) => Record<string, string>;
+  /** NLU 自然语言触发词（写入 manifest，供预筛与 LLM） */
+  nluHints?: readonly string[];
 };
 
 /** 向导内二级分组（与命令上的 wizardGroup  id 对应） */
@@ -76,5 +85,5 @@ export type CatalogWizardMeta = {
 
 export type CommandHandlerFn = (
   ctx: FrameworkContext,
-  input: { action: string; sub: string; source: "slash" | "wizard" | "system" },
+  input: { action: string; sub: string; source: "slash" | "wizard" | "nlu" | "system" },
 ) => Promise<void>;

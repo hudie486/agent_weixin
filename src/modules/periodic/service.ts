@@ -26,6 +26,7 @@ import { periodicCommandSpecs } from "./keywords.js";
 import { formatCommandHelp } from "../../framework/commands/helpText.js";
 import { isAdminVerified } from "../../security/adminAuth.js";
 import { periodicJobOwnerOrAdmin, periodicJobVisibleToUser } from "../../shared/notifyTarget.js";
+import { resolvePeriodicJobByRef } from "../../plugins/periodic/jobResolve.js";
 
 type ParsedCreate =
   | {
@@ -42,6 +43,24 @@ type ParsedCreate =
       shortName?: string;
     }
   | null;
+
+async function findPeriodicJobByRef(
+  targetUserId: string,
+  ref: string,
+  opts?: { requireOwner?: boolean; adminOk: boolean },
+): Promise<{ job: PeriodicJob } | { error: string }> {
+  const st = await listJobsState();
+  const visible = st.jobs.filter((j) => periodicJobVisibleToUser(j, targetUserId));
+  const r = resolvePeriodicJobByRef(visible, ref);
+  if (r.status === "found") {
+    if (opts?.requireOwner && !periodicJobOwnerOrAdmin(r.job, targetUserId, opts.adminOk)) {
+      return { error: "Job not found or permission denied" };
+    }
+    return { job: r.job };
+  }
+  if (r.status === "ambiguous") return { error: r.hint };
+  return { error: "Job not found or permission denied" };
+}
 
 function normalizeShortLabel(raw: string): string | undefined {
   const s = raw.trim().replace(/[/\\:*?"<>|]/g, "").slice(0, 24);
@@ -121,12 +140,12 @@ export async function executePeriodicAction(ctx: FrameworkContext, action: Perio
       await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /periodic detail <ID> [path]", "warn");
       return;
     }
-    const st = await listJobsState();
-    const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || !periodicJobVisibleToUser(job, targetUserId)) {
-      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Job not found or permission denied", "error");
+    const resolved = await findPeriodicJobByRef(targetUserId, id);
+    if ("error" in resolved) {
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, resolved.error, "error");
       return;
     }
+    const job = resolved.job;
     const showPaths = parts.slice(1).some((p) => p.trim().toLowerCase() === "path");
     await ctx.notify.replyPlain(ctx.envelope ?? ctx.userId, formatJobDetail(job, 0, { showPaths }));
     return;
@@ -204,12 +223,15 @@ export async function executePeriodicAction(ctx: FrameworkContext, action: Perio
       await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /periodic modify <ID> <mode...>", "warn");
       return;
     }
-    const st = await listJobsState();
-    const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || !periodicJobOwnerOrAdmin(job, targetUserId, isAdminVerified(ctx.userId))) {
-      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Job not found or permission denied", "error");
+    const resolved = await findPeriodicJobByRef(targetUserId, id, {
+      requireOwner: true,
+      adminOk: isAdminVerified(ctx.userId),
+    });
+    if ("error" in resolved) {
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, resolved.error, "error");
       return;
     }
+    const job = resolved.job;
     const mode = (parts[1] ?? "agent").toLowerCase();
     if (mode === "cron") {
       const expr = parts.slice(2).join(" ").trim().replace(/\s+/g, " ");
@@ -282,12 +304,15 @@ export async function executePeriodicAction(ctx: FrameworkContext, action: Perio
       await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /periodic remove <ID>", "warn");
       return;
     }
-    const st = await listJobsState();
-    const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || !periodicJobOwnerOrAdmin(job, targetUserId, isAdminVerified(ctx.userId))) {
-      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Job not found or permission denied", "error");
+    const resolved = await findPeriodicJobByRef(targetUserId, id, {
+      requireOwner: true,
+      adminOk: isAdminVerified(ctx.userId),
+    });
+    if ("error" in resolved) {
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, resolved.error, "error");
       return;
     }
+    const job = resolved.job;
     await removeJob(job.id);
     await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Removed.", "success");
     return;
@@ -298,12 +323,15 @@ export async function executePeriodicAction(ctx: FrameworkContext, action: Perio
       await ctx.notify.replyText(ctx.envelope ?? ctx.userId, `Usage: /periodic ${action} <ID>`, "warn");
       return;
     }
-    const st = await listJobsState();
-    const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || !periodicJobOwnerOrAdmin(job, targetUserId, isAdminVerified(ctx.userId))) {
-      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Job not found", "error");
+    const resolved = await findPeriodicJobByRef(targetUserId, id, {
+      requireOwner: true,
+      adminOk: isAdminVerified(ctx.userId),
+    });
+    if ("error" in resolved) {
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, resolved.error, "error");
       return;
     }
+    const job = resolved.job;
     await setEnabled(job.id, action === "enable");
     await ctx.notify.replyText(ctx.envelope ?? ctx.userId, action === "enable" ? "Enabled." : "Disabled.", "success");
     return;
@@ -314,12 +342,12 @@ export async function executePeriodicAction(ctx: FrameworkContext, action: Perio
       await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Usage: /periodic run <ID>", "warn");
       return;
     }
-    const st = await listJobsState();
-    const job = st.jobs.find((j) => j.id === id || j.id.startsWith(id));
-    if (!job || !periodicJobVisibleToUser(job, targetUserId)) {
-      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, "Job not found", "error");
+    const resolved = await findPeriodicJobByRef(targetUserId, id);
+    if ("error" in resolved) {
+      await ctx.notify.replyText(ctx.envelope ?? ctx.userId, resolved.error, "error");
       return;
     }
+    const job = resolved.job;
     const out = await executePeriodicJob(job as PeriodicJob, ctx.agentCfg, ctx.notify).catch((e) => ({
       ok: false as const,
       errorSummary: e instanceof Error ? e.message : String(e),

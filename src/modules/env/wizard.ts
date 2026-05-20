@@ -1,5 +1,2 @@
-import { registerInjectedEnvWizard } from "../../config/injectedEnvWizard.js";
-
-export function registerEnvWizardModule(): void {
-  registerInjectedEnvWizard();
-}
+/** @deprecated Catalog 向导已替代 WizardDef */
+export function registerEnvWizardModule(): void {}

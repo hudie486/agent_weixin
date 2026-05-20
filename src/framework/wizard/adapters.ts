@@ -23,7 +23,7 @@ export async function dispatchWizardCommand(args: {
   resolvers: ActionResolvers;
   ctx: WizardHandlerCtx;
   inbound: InboundEnvelope;
-  domain: "periodic" | "code" | "env" | "user";
+  domain: "periodic" | "code" | "env" | "user" | "qq";
   sub: string;
 }): Promise<boolean> {
   const resolver = args.resolvers[args.domain];
@@ -44,7 +44,7 @@ export async function dispatchWizardCommand(args: {
 export async function dispatchWizardCommandWithDefaults(args: {
   ctx: WizardHandlerCtx;
   inbound: InboundEnvelope;
-  domain: "periodic" | "code" | "env" | "user";
+  domain: "periodic" | "code" | "env" | "user" | "qq";
   sub: string;
 }): Promise<boolean> {
   return dispatchWizardCommand({

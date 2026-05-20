@@ -1,13 +1,16 @@
 import type { FrameworkContext } from "../framework/contracts/module.js";
 import type { ModuleDomain } from "../framework/contracts/module.js";
 import { getCommandCatalog } from "../framework/commands/catalog.js";
-import { slotsToCollected, type NluCommandManifest } from "../framework/commands/nluManifest.js";
-import { getCommandRegistrySingleton, getActionResolversSingleton } from "../framework/commands/runtime.js";
-import { routeSlashCommand } from "../framework/commands/router.js";
-import { slashFullLine } from "../wizard/slashCatalog.js";
+import { commandToManifest, slotsToCollected, type NluCommandManifest } from "../framework/commands/nluManifest.js";
+import {
+  actionResolversSingleton,
+  commandRegistrySingleton,
+} from "../framework/commands/runtime.js";
+import { isAdminVerified } from "../security/adminAuth.js";
+import { catalogResolverFor } from "../framework/commands/legacyRegister.js";
 
 /**
- * NLU 判定结果（预留）。所有入口最终必须落到 CommandCatalog 的 action + sub。
+ * NLU 判定结果。所有入口最终落到 CommandCatalog 的 action + sub。
  */
 export type NluResolvedIntent = {
   domain: ModuleDomain;
@@ -19,47 +22,38 @@ export type NluResolvedIntent = {
 export function findNluCommandManifest(domain: ModuleDomain, action: string): NluCommandManifest | undefined {
   const cmd = getCommandCatalog().get(domain, action);
   if (!cmd) return undefined;
-  return {
-    intentId: `${domain}.${action}`,
-    domain,
-    action,
-    usage: cmd.usage,
-    summary: cmd.summary,
-    keywords: [...cmd.keywords],
-    pathAliases: (cmd.pathAliases ?? []).map((a) => [...a]),
-    requiresAdmin: cmd.requiresAdmin ?? false,
-    slots: (cmd.params ?? []).map((p) => ({
-      name: p.name,
-      label: p.label,
-      kind: p.kind,
-      required: p.required ?? false,
-      enumValues: p.options?.map((o) => o.value),
-    })),
-  };
+  return commandToManifest(cmd);
 }
 
-/**
- * 将 NLU 意图执行到与斜杠/向导相同的命令管线（唯一收口）。
- * 实现 NLU 时：判定 → 填充 slots → 调用本函数。
- */
 export async function dispatchNluIntent(ctx: FrameworkContext, intent: NluResolvedIntent): Promise<boolean> {
   const catalog = getCommandCatalog();
   const cmd = catalog.get(intent.domain, intent.action);
   if (!cmd) return false;
 
+  if (cmd.requiresAdmin && !isAdminVerified(ctx.userId)) {
+    await ctx.notify.replyText(
+      ctx.envelope ?? ctx.userId,
+      "该命令需要管理员权限，请先执行 /用户 验证 <密码>。",
+      "warn",
+    );
+    return true;
+  }
+
   const collected = slotsToCollected(cmd, intent.slots);
   const sub = cmd.buildSub(collected);
-  const slashLine = slashFullLine(intent.domain as "user" | "code" | "periodic" | "env", sub);
+  const resolver = actionResolversSingleton[intent.domain as keyof typeof actionResolversSingleton]
+    ?? catalogResolverFor(intent.domain);
+  const parsed = resolver(sub);
+  if (!parsed) return false;
 
-  return routeSlashCommand(
-    getCommandRegistrySingleton(),
-    getActionResolversSingleton(),
-    ctx,
-    slashLine,
-  );
+  return commandRegistrySingleton.dispatch(ctx, {
+    domain: intent.domain,
+    action: parsed.action,
+    sub: parsed.rest,
+    source: "nlu",
+    userId: ctx.userId,
+    envelope: ctx.envelope,
+  });
 }
 
-/** NLU 未实现时的占位：返回 false，由上层回退到对话或提示使用 /帮助 */
-export async function tryDispatchNluText(_ctx: FrameworkContext, _text: string): Promise<boolean> {
-  return false;
-}
+export { tryDispatchNluText, handleNluSlotMessage, handleWizardOrNluMessage } from "./nluInbound.js";

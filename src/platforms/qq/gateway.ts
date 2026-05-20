@@ -1,5 +1,7 @@
 import WebSocket from "ws";
 import { createLogger } from "../../logger.js";
+import { resolveOutboundHttpProxyUrl } from "../../util/outboundProxy.js";
+import { createWebSocketProxyAgent } from "../../util/wsProxyAgent.js";
 import type { QqBotConfig } from "./config.js";
 import { resolveQqApiToken } from "./auth.js";
 import { qqApiJson } from "./api.js";
@@ -32,6 +34,27 @@ async function resolveGatewayWsUrl(cfg: QqBotConfig): Promise<string> {
     const url = String(gw.url ?? "").trim();
     if (url) return url;
   } catch (e) {
+    const cause =
+      e instanceof Error && e.cause instanceof Error
+        ? e.cause.message
+        : e instanceof Error
+          ? e.message
+          : String(e);
+    // #region agent log
+    fetch("http://127.0.0.1:7467/ingest/1e999cd2-8360-48c0-b1c6-b57a251ab231", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "927cab" },
+      body: JSON.stringify({
+        sessionId: "927cab",
+        runId: "pre-fix",
+        hypothesisId: "B",
+        location: "gateway.ts:resolveGatewayWsUrl",
+        message: "QQ /gateway/bot failed",
+        data: { cause: cause.slice(0, 200), proxy: resolveOutboundHttpProxyUrl()?.source ?? "none" },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     log.warn("QQ /gateway/bot failed, trying /gateway", e);
   }
   const fallback = await qqApiJson<{ url?: string }>(cfg, "/gateway");
@@ -50,8 +73,11 @@ export async function connectQqGateway(cfg: QqBotConfig, onDispatch: QqDispatchH
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   let closed = false;
 
+  const proxyUrl = resolveOutboundHttpProxyUrl()?.url;
+  const wsAgent = proxyUrl ? await createWebSocketProxyAgent(proxyUrl) : undefined;
+
   const connect = (): void => {
-    ws = new WebSocket(session.url);
+    ws = new WebSocket(session.url, wsAgent ? { agent: wsAgent } : undefined);
     ws.on("open", () => log.info("QQ websocket open"));
     ws.on("message", (raw) => {
       let pkt: GatewayPayload;

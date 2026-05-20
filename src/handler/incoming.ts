@@ -8,10 +8,22 @@ import { parseSlash } from "../commands/slashParse.js";
 import { registerAllWizards } from "../wizard/registerAll.js";
 import { handleWizardMessage, startRootWizard } from "../wizard/engine.js";
 import type { WizardHandlerCtx } from "../wizard/types.js";
-import { clearWizardPending, wizardStateFilePath } from "../wizard/stateStore.js";
+import {
+  clearAllInteractionPending,
+  wizardStateFilePath,
+} from "../wizard/stateStore.js";
+import {
+  handleNluSlotMessage,
+  handleWizardOrNluMessage,
+  tryDispatchNluText,
+} from "../commandModule/nlu.js";
 import { createCoreModuleRegistry } from "../framework/registerModules.js";
 import { routeSlashCommand } from "../framework/commands/router.js";
-import { actionResolversSingleton, commandRegistrySingleton } from "../framework/commands/runtime.js";
+import {
+  actionResolversSingleton,
+  commandRegistrySingleton,
+  getCommandRegistrySingleton,
+} from "../framework/commands/runtime.js";
 import { ensureUserAllowed } from "../security/gate.js";
 import { handleUtilitySlash } from "./utilitySlash.js";
 import { bindWechatInbound } from "../platforms/wechat/inbound.js";
@@ -76,7 +88,7 @@ export async function handleInboundText(ctx: InboundHandlerCtx, text: string): P
 
   const slash = parseSlash(trimmed);
   if (slash) {
-    clearWizardPending(inbound.userId, wizardPath);
+    clearAllInteractionPending(inbound.userId, wizardPath);
     if (slash.name === "向导" || slash.name === "菜单") {
       await startRootWizard(wizCtx, inbound, wizardPath);
       return;
@@ -95,11 +107,27 @@ export async function handleInboundText(ctx: InboundHandlerCtx, text: string): P
     return;
   }
 
+  const fctx = asFrameworkCtx(ctx);
+  // 纯自然语言入站也须装配 CommandCatalog，否则 NLU 预筛 manifest 为空
+  getCommandRegistrySingleton();
+
+  if (await handleNluSlotMessage(fctx, inbound, trimmed, wizardPath)) {
+    return;
+  }
+
+  if (await handleWizardOrNluMessage(fctx, inbound, trimmed, wizardPath)) {
+    return;
+  }
+
   if (await handleWizardMessage(wizCtx, inbound, trimmed, wizardPath)) {
     return;
   }
 
-  await moduleRegistry.dispatch(asFrameworkCtx(ctx), {
+  if (await tryDispatchNluText(fctx, trimmed)) {
+    return;
+  }
+
+  await moduleRegistry.dispatch(fctx, {
     domain: "agent",
     source: "chat",
     userId: ctx.userId,

@@ -9,6 +9,8 @@ import { registerUserCommandSystem } from "../modules/user/commands.js";
 import { registerCodeCommandSystem } from "../modules/code/commands.js";
 import { registerPeriodicCommandSystem } from "../modules/periodic/commands.js";
 import { registerEnvCommandSystem } from "../modules/env/commands.js";
+import { registerQqCommandSystem } from "../modules/qq/catalog.js";
+import { validateAllRegisteredCommands } from "../framework/commands/validateDescriptor.js";
 
 /** 装配全部已接入业务域的命令体系 */
 export function bootstrapCommandSystems(catalog: CommandCatalog = getCommandCatalog()): CommandCatalog {
@@ -19,5 +21,7 @@ export function bootstrapCommandSystems(catalog: CommandCatalog = getCommandCata
   registerCodeCommandSystem(catalog);
   registerPeriodicCommandSystem(catalog);
   registerEnvCommandSystem(catalog);
+  registerQqCommandSystem(catalog);
+  validateAllRegisteredCommands(catalog);
   return catalog;
 }

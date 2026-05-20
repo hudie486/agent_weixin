@@ -87,6 +87,7 @@ export function registerUserCommandSystem(catalog: CommandCatalog): void {
       domain: "user",
       action: "login",
       keywords: ["验证"],
+      nluHints: ["验证管理员", "管理员验证", "我要验证", "登录管理员"],
       wizardMenuLabel: "验证",
       usage: "/用户 验证 <密码>",
       summary: "管理员口令验证",

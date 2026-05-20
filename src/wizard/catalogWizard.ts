@@ -381,7 +381,7 @@ async function finishCatalogCommand(
   const ok = await dispatchWizardCommandWithDefaults({
     ctx,
     inbound,
-    domain: desc.domain as "user" | "code" | "periodic" | "env",
+    domain: desc.domain as "user" | "code" | "periodic" | "env" | "qq",
     sub,
   });
   if (!ok) {

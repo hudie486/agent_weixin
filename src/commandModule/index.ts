@@ -26,6 +26,8 @@ export {
 export {
   dispatchNluIntent,
   tryDispatchNluText,
+  handleNluSlotMessage,
+  handleWizardOrNluMessage,
   findNluCommandManifest,
   type NluResolvedIntent,
 } from "./nlu.js";
