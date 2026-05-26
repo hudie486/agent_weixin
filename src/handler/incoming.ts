@@ -15,6 +15,7 @@ import {
 import {
   handleNluSlotMessage,
   handleWizardOrNluMessage,
+  replyNluMissedCommandHint,
   tryDispatchNluText,
 } from "../commandModule/nlu.js";
 import { createCoreModuleRegistry } from "../framework/registerModules.js";
@@ -108,7 +109,7 @@ export async function handleInboundText(ctx: InboundHandlerCtx, text: string): P
   }
 
   const fctx = asFrameworkCtx(ctx);
-  // 纯自然语言入站也须装配 CommandCatalog，否则 NLU 预筛 manifest 为空
+  // 纯自然语言入站也须装配 CommandCatalog，否则 NLU manifest 为空
   getCommandRegistrySingleton();
 
   if (await handleNluSlotMessage(fctx, inbound, trimmed, wizardPath)) {
@@ -124,6 +125,10 @@ export async function handleInboundText(ctx: InboundHandlerCtx, text: string): P
   }
 
   if (await tryDispatchNluText(fctx, trimmed)) {
+    return;
+  }
+
+  if (await replyNluMissedCommandHint(fctx, inbound, trimmed)) {
     return;
   }
 

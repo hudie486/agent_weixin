@@ -19,8 +19,17 @@ const PERIODIC_KEYWORDS: Readonly<Record<PeriodicAction, readonly string[]>> = {
   remove: ["删除", "remove"],
   enable: ["启用", "enable"],
   disable: ["停用", "disable"],
-  run: ["执行", "run"],
+  run: ["执行", "run", "运行"],
 };
+
+/** 周期 run 的自然语言触发词（预筛 / 抽实体用） */
+export const PERIODIC_RUN_NLU_HINTS: readonly string[] = [
+  "运行一遍",
+  "运行一次",
+  "跑一遍",
+  "手动运行",
+  "执行一遍",
+];
 
 const flat = new Map<string, PeriodicAction>();
 for (const [action, words] of Object.entries(PERIODIC_KEYWORDS) as [PeriodicAction, readonly string[]][]) {

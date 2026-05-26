@@ -42,4 +42,31 @@ describe("resolvePeriodicJobByRef", () => {
     const r = resolvePeriodicJobByRef(jobs, "不存在");
     expect(r.status).toBe("not_found");
   });
+
+  it("fuzzy-matches cursor更新监控 to cursor更新摘要", () => {
+    const cursorJobs = [
+      job({ id: "e267dd22-1111-2222-3333-444444444444", shortName: "cursor更新摘要" }),
+      job({ id: "abc12345-1111-2222-3333-444444444444", shortName: "日报" }),
+      job({ id: "def67890-aaaa-bbbb-cccc-dddddddddddd", shortName: "流量监控" }),
+    ];
+    const r = resolvePeriodicJobByRef(cursorJobs, "cursor更新监控");
+    expect(r.status).toBe("found");
+    if (r.status === "found") expect(r.job.shortName).toBe("cursor更新摘要");
+  });
+
+  it("matches 运行一遍 + 口语化简称", () => {
+    const cursorJobs = [
+      job({ id: "e267dd22-1111-2222-3333-444444444444", shortName: "cursor更新摘要" }),
+      job({ id: "abc12345-1111-2222-3333-444444444444", shortName: "日报" }),
+    ];
+    const r = resolvePeriodicJobByRef(cursorJobs, "运行一遍cursor更新监控");
+    expect(r.status).toBe("found");
+    if (r.status === "found") expect(r.job.shortName).toBe("cursor更新摘要");
+  });
+
+  it("matches 运行一遍日报 via shortName substring", () => {
+    const r = resolvePeriodicJobByRef(jobs, "运行一遍日报");
+    expect(r.status).toBe("found");
+    if (r.status === "found") expect(r.job.shortName).toBe("日报");
+  });
 });

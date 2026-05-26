@@ -10,6 +10,36 @@ function norm(s: string): string {
   return s.trim().toLowerCase();
 }
 
+function compactChars(s: string): string {
+  return norm(s).replace(/\s+/g, "");
+}
+
+const RUN_PREFIX_RE = /^(?:请|帮我|)?(?:运行|执行|跑)(?:一遍|一次|一下)?\s*/iu;
+
+/** 去掉「运行一遍」等动词前缀，便于从整句里抽任务简称 */
+export function compactJobRefHint(ref: string): string {
+  let t = ref.trim();
+  for (let i = 0; i < 3; i++) {
+    const next = t.replace(RUN_PREFIX_RE, "").trim();
+    if (next === t) break;
+    t = next;
+  }
+  return t;
+}
+
+function prefixOverlapScore(ref: string, target: string): number {
+  const a = compactChars(ref);
+  const b = compactChars(target);
+  if (!a || !b || a === b) return 0;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (i < 3) return 0;
+  const minLen = Math.min(a.length, b.length);
+  const ratio = i / minLen;
+  if (ratio < 0.45) return 0;
+  return 55 + Math.floor(ratio * 30);
+}
+
 function jobLabel(job: PeriodicJob): string {
   const sn = job.shortName?.trim();
   const desc = job.userPrompt?.trim().slice(0, 40);
@@ -21,17 +51,27 @@ function jobLabel(job: PeriodicJob): string {
 }
 
 function scoreJob(job: PeriodicJob, ref: string): number {
-  const r = norm(ref);
+  const compactRef = compactJobRefHint(ref);
+  const r = norm(compactRef);
   if (!r) return 0;
-  if (job.id === ref || job.id.startsWith(ref)) return 100;
+  if (job.id === compactRef || job.id.startsWith(compactRef)) return 100;
   const sn = job.shortName?.trim();
-  if (sn && norm(sn) === r) return 90;
-  if (sn && norm(sn).includes(r)) return 70;
-  if (sn && r.includes(norm(sn))) return 65;
+  let best = 0;
+  if (sn) {
+    const ns = norm(sn);
+    if (ns === r) best = Math.max(best, 90);
+    else if (ns.includes(r)) best = Math.max(best, 70);
+    else if (r.includes(ns)) best = Math.max(best, 65);
+    else best = Math.max(best, prefixOverlapScore(r, ns));
+  }
   const prompt = job.userPrompt?.trim();
-  if (prompt && norm(prompt).includes(r)) return 50;
-  if (prompt && r.length >= 2 && norm(prompt).includes(r)) return 45;
-  return 0;
+  if (prompt) {
+    const np = norm(prompt);
+    if (np.includes(r)) best = Math.max(best, 50);
+    else if (r.length >= 2 && np.includes(r)) best = Math.max(best, 45);
+    else best = Math.max(best, prefixOverlapScore(r, prompt));
+  }
+  return best;
 }
 
 /** 按 ID 前缀、shortName、描述模糊匹配周期任务（可见性由调用方过滤） */

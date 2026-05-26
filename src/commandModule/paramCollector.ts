@@ -7,7 +7,7 @@ import type { MenuOptionDef } from "../wizard/types.js";
 import { buildParamOptionsList, resolveParamValue } from "./paramResolve.js";
 import { draftNluParamPrompt } from "./nluDialogue.js";
 import { slotsToCollected } from "../framework/commands/nluManifest.js";
-import { extractEntityHintFromUtterance, mergeInferredSlots } from "./utteranceSlots.js";
+import { applyNluSlotFallbacks } from "./nluSlotFallbacks.js";
 
 export function getActiveParams(
   catalog: CommandCatalog,
@@ -134,7 +134,7 @@ export function normalizeResolvedSlots(
   return out;
 }
 
-/** DeepSeek 返回的 slots：仅做 ID 类解析校验，不再用规则从整句覆写槽位 */
+/** DeepSeek 返回的 slots：映射到 catalog 并校验 ID 类槽位 */
 export function finalizeLlmSlots(
   ctx: FrameworkContext,
   catalog: CommandCatalog,
@@ -145,50 +145,17 @@ export function finalizeLlmSlots(
   return normalizeResolvedSlots(ctx, catalog, desc, collected);
 }
 
-/** 无 DeepSeek 时的回退：规则从整句抽槽 */
-export function prepareNluCollected(
+/** LLM 槽位 + 原话结构性兜底 + ID 校验 */
+export function collectNluSlots(
   ctx: FrameworkContext,
   catalog: CommandCatalog,
   desc: CommandDescriptor,
-  utterance: string,
-  slots: Record<string, string>,
+  llmSlots: Record<string, string>,
+  utterance?: string,
 ): Record<string, string> {
-  let collected = mergeInferredSlots(desc, utterance, { ...slots });
-  if (utterance) {
-    collected = tryInferAndResolveSlots(ctx, catalog, desc, utterance, collected);
-    collected = normalizeResolvedSlots(ctx, catalog, desc, collected);
-  }
-  return collected;
-}
-
-/** 用原始整句推断槽位并尝试静默解析（唯一命中则写入 collected） */
-export function tryInferAndResolveSlots(
-  ctx: FrameworkContext,
-  catalog: CommandCatalog,
-  desc: CommandDescriptor,
-  utterance: string,
-  collected: Record<string, string>,
-): Record<string, string> {
-  const params = getActiveParams(catalog, desc, collected);
-  const entityHint = extractEntityHintFromUtterance(utterance, desc);
-  const out = { ...collected };
-  for (const p of params) {
-    if (out[p.name]?.trim()) continue;
-    // 口令/密钥必须由用户下一条消息提供，不能把触发句当成密码
-    if (p.kind === "secret") continue;
-    if (p.kind !== "periodicJobId" && p.kind !== "codeAlias" && p.kind !== "userId") continue;
-
-    const raw =
-      p.kind === "periodicJobId" || p.kind === "codeAlias"
-        ? (entityHint || utterance.trim())
-        : utterance.trim();
-    if (!raw) continue;
-    const resolved = resolveParamValue(ctx, p, raw);
-    if (resolved.ok && resolved.value) {
-      out[p.name] = resolved.value;
-    }
-  }
-  return out;
+  let collected = finalizeLlmSlots(ctx, catalog, desc, llmSlots);
+  collected = applyNluSlotFallbacks(desc, collected, utterance);
+  return normalizeResolvedSlots(ctx, catalog, desc, collected);
 }
 
 export function renderParamPromptWithOptions(

@@ -1,6 +1,11 @@
 import type { CommandCatalog } from "../../framework/commands/catalog.js";
 import { registerLegacySlashDomain } from "../../framework/commands/legacyRegister.js";
-import { periodicCommandSpecs, periodicKeywords, type PeriodicAction } from "./keywords.js";
+import {
+  periodicCommandSpecs,
+  periodicKeywords,
+  PERIODIC_RUN_NLU_HINTS,
+  type PeriodicAction,
+} from "./keywords.js";
 import { executePeriodicAction } from "./service.js";
 
 /** 周期域命令体系 */
@@ -16,6 +21,7 @@ export function registerPeriodicCommandSystem(catalog: CommandCatalog): void {
     },
     specs: periodicCommandSpecs(),
     keywords: periodicKeywords(),
+    nluHints: { run: PERIODIC_RUN_NLU_HINTS },
     execute: (ctx, action, sub) => executePeriodicAction(ctx, action as PeriodicAction, sub),
   });
 }

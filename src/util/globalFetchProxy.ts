@@ -1,7 +1,6 @@
 import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 import { createLogger } from "../logger.js";
 import {
-  isOutboundFetchProxyDisabled,
   mirrorOutboundProxyToProcessEnv,
   proxyUrlHostForLog,
   resolveOutboundHttpProxyUrl,
@@ -19,25 +18,6 @@ const log = createLogger("fetch-proxy");
  */
 export function applyGlobalFetchProxyFromEnv(): void {
   const resolved = resolveOutboundHttpProxyUrl();
-  // #region agent log
-  fetch("http://127.0.0.1:7467/ingest/1e999cd2-8360-48c0-b1c6-b57a251ab231", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "927cab" },
-    body: JSON.stringify({
-      sessionId: "927cab",
-      runId: "pre-fix",
-      hypothesisId: "A",
-      location: "globalFetchProxy.ts:applyGlobalFetchProxyFromEnv",
-      message: "outbound proxy resolve",
-      data: {
-        disabled: isOutboundFetchProxyDisabled(),
-        source: resolved?.source ?? "none",
-        host: resolved ? proxyUrlHostForLog(resolved.url) : "",
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!resolved) {
     return;
   }
@@ -47,21 +27,6 @@ export function applyGlobalFetchProxyFromEnv(): void {
     log.info(
       `全局 fetch 已绑定 undici EnvHttpProxyAgent（${resolved.source} → ${proxyUrlHostForLog(resolved.url)}）`,
     );
-    // #region agent log
-    fetch("http://127.0.0.1:7467/ingest/1e999cd2-8360-48c0-b1c6-b57a251ab231", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "927cab" },
-      body: JSON.stringify({
-        sessionId: "927cab",
-        runId: "pre-fix",
-        hypothesisId: "A",
-        location: "globalFetchProxy.ts:applyGlobalFetchProxyFromEnv",
-        message: "global fetch proxy applied",
-        data: { source: resolved.source, host: proxyUrlHostForLog(resolved.url) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
   } catch (e) {
     log.warn(`全局 fetch 代理绑定失败：${e instanceof Error ? e.message : String(e)}`);
   }

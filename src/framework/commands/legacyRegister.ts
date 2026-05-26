@@ -42,6 +42,19 @@ function legacyRestParam(usage: string): CommandParamDef {
 
 function paramsForAction(domain: ModuleDomain, action: string, usage: string): readonly CommandParamDef[] {
   if (action === "help") return [];
+  if (domain === "periodic" && action === "modify") {
+    return [
+      periodicJobParam(true, usage),
+      {
+        name: "instruction",
+        label: "修改说明",
+        prompt: "请描述要如何修改该周期任务（将传给脚本生成/修改）：",
+        kind: "rest",
+        required: false,
+        hintLines: ["可整段描述需求", "不需要额外说明可发送「跳过」"],
+      },
+    ];
+  }
   if (domain === "periodic" && PERIODIC_JOB_ACTIONS.has(action)) {
     return [periodicJobParam(true, usage)];
   }
@@ -57,6 +70,13 @@ function buildSubForAction(
   collected: Record<string, string>,
 ): string {
   const head = kws[0] ?? spec.action;
+  if (spec.domain === "periodic" && spec.action === "modify") {
+    const ref = collected.jobRef?.trim();
+    const inst = collected.instruction?.trim();
+    if (!ref) return head;
+    if (inst) return `${head} ${ref} agent ${inst}`;
+    return `${head} ${ref}`;
+  }
   if (spec.domain === "periodic" && PERIODIC_JOB_ACTIONS.has(spec.action)) {
     const ref = collected.jobRef?.trim();
     return ref ? `${head} ${ref}` : head;
@@ -75,6 +95,7 @@ export function registerLegacySlashDomain(args: {
   meta: DomainCatalogMeta;
   specs: readonly CommandSpec[];
   keywords: Readonly<Record<string, readonly string[]>>;
+  nluHints?: Readonly<Partial<Record<string, readonly string[]>>>;
   execute: (ctx: FrameworkContext, action: string, sub: string) => Promise<void>;
 }): void {
   args.catalog.registerDomain(args.meta);
@@ -86,12 +107,25 @@ export function registerLegacySlashDomain(args: {
         domain: spec.domain,
         action: spec.action,
         keywords: [...kws],
+        nluHints: args.nluHints?.[spec.action],
         wizardMenuLabel: kws[0],
         usage: spec.usage,
         summary: spec.summary,
         params,
         buildSub: (c) => buildSubForAction(kws, spec, c),
         parseSub: (rest): Record<string, string> => {
+          if (spec.domain === "periodic" && spec.action === "modify") {
+            const t = rest.trim();
+            const agentIdx = t.search(/\s+agent\s+/i);
+            if (agentIdx >= 0) {
+              return {
+                jobRef: t.slice(0, agentIdx).trim(),
+                instruction: t.slice(agentIdx).replace(/^\s+agent\s+/i, "").trim(),
+              };
+            }
+            const sp = t.split(/\s+/);
+            return { jobRef: sp[0] ?? "", instruction: sp.slice(1).join(" ").trim() };
+          }
           if (spec.domain === "periodic" && PERIODIC_JOB_ACTIONS.has(spec.action)) {
             return { jobRef: rest.trim() };
           }

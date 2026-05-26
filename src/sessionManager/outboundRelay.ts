@@ -6,6 +6,7 @@ import { logSessionIoOutbound } from "../util/sessionTrace.js";
 import { prepareGenericOutbound } from "./genericOutbound.js";
 import { enqueueOutboundMessage } from "./outboundQueue.js";
 import type { SessionRegistry } from "./registry.js";
+import { resolveDeliveryBinding } from "./proactiveBinding.js";
 import type { OutboundPayload } from "./types.js";
 import type { OutboundQueueReason } from "./outboundQueue.js";
 
@@ -47,18 +48,14 @@ export async function relayOutbound(
   payload: OutboundPayload,
   opts?: RelayDeliverOpts,
 ): Promise<void> {
-  const binding = registry.requireBinding(userId);
-  const deliver = resolveDeliver(registry, binding.platform);
-  let effective = opts?.useReplyToken === false ? { ...binding, replyToken: undefined } : { ...binding };
-  if (opts?.instanceIdOverride?.trim()) {
-    effective = { ...effective, instanceId: opts.instanceIdOverride.trim() };
-  }
+  const effective = resolveDeliveryBinding(registry, userId, opts);
+  const deliver = resolveDeliver(registry, effective.platform);
 
   const generic = prepareGenericOutbound(payload);
   const styled = deliver.styleOutbound(effective, generic);
   const source = opts?.source ?? "deliver";
   const previewText = styled.file?.caption ?? styled.text;
-  logSessionIoOutbound(binding.platform, effective.instanceId, source, userId, previewText);
+  logSessionIoOutbound(effective.platform, effective.instanceId, source, userId, previewText);
 
   try {
     await withNetworkRetry(() => deliver.sendOutbound(effective, styled, opts), {
@@ -71,7 +68,7 @@ export async function relayOutbound(
     if (!opts?.skipQueueOnFailure && shouldEnqueueAfterSendError(e)) {
       enqueueOutboundMessage({
         userId,
-        platform: binding.platform,
+        platform: effective.platform,
         instanceId: effective.instanceId,
         payload,
         source,

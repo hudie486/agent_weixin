@@ -13,36 +13,46 @@ import {
 import { dispatchNluIntent, type NluResolvedIntent } from "./nlu.js";
 import {
   draftNluCancel,
-  draftNluDisambiguate,
   draftNluInvalidChoice,
 
 } from "./nluDialogue.js";
 import { styleNluDialogue, type NluStyleKind } from "./nluPromptStyle.js";
 import {
-  candidatesFromManifests,
   isSessionExpired,
   loadInteractionState,
   setSession,
   type DisambiguateSession,
   type NluSlotfillSession,
 } from "./interactionSession.js";
-import { isNluEnabled, nluInterruptMin, loadNluLlmConfig } from "./nluConfig.js";
+import {
+  isNluEnabled,
+  nluAgentFallbackOnMiss,
+  nluInterruptMin,
+  loadNluLlmConfig,
+  NLU_LLM_RETRY_USER_HINT,
+} from "./nluConfig.js";
 import { getCommandRegistrySingleton } from "../framework/commands/runtime.js";
 import type { CommandParamDef } from "../framework/commands/descriptor.js";
 import {
   applyParamAnswer,
   buildNluParamPromptDraft,
-  finalizeLlmSlots,
+  collectNluSlots,
   findNextParamIndex,
   getActiveParams,
   isParamsComplete,
-  prepareNluCollected,
 } from "./paramCollector.js";
 import { classifyIntentWithNluLlm } from "./nluResolve.js";
-import { commandToManifest } from "../framework/commands/nluManifest.js";
-import { prefilterNluCommands, type PrefilterHit } from "./nluPrefilter.js";
+import { createLogger } from "../logger.js";
+
+const nluLog = createLogger("nlu");
 
 const EXIT_WORDS = new Set(["退出", "exit", "quit", "取消", "cancel"]);
+
+function nluLlmTimeoutNotifier(ctx: FrameworkContext, inbound: InboundEnvelope) {
+  return async () => {
+    await ctx.notify.replyPlain(inbound, NLU_LLM_RETRY_USER_HINT);
+  };
+}
 
 function isExitMessage(text: string): boolean {
   const t = text.trim();
@@ -124,10 +134,13 @@ async function startSlotfillOrDispatch(
   if (!desc) return false;
 
   const utterance = originalUtterance?.trim() ?? "";
-  const collected = finalizeLlmSlots(ctx, catalog, desc, { ...intent.slots });
+  const collected = collectNluSlots(ctx, catalog, desc, { ...intent.slots }, utterance);
 
   if (isParamsComplete(catalog, desc, collected)) {
-    return dispatchNluIntent(ctx, { ...intent, slots: collected });
+    return dispatchNluIntent(ctx, {
+      ...intent,
+      sourceUtterance: utterance || intent.sourceUtterance,
+    });
   }
 
   const idx = findNextParamIndex(catalog, desc, collected);
@@ -150,59 +163,23 @@ async function startSlotfillOrDispatch(
   return true;
 }
 
-/** 无 DeepSeek 时：预筛直接定意图 + 规则抽槽 */
-async function resolveFromHitsLegacy(
-  ctx: FrameworkContext,
-  inbound: InboundEnvelope,
-  hits: PrefilterHit[],
-  statePath: string,
-  originalUtterance: string,
-): Promise<boolean> {
-  if (hits.length === 0) return false;
-  if (hits.length === 1) {
-    const h = hits[0]!;
-    const catalog = getCommandCatalog();
-    const desc = catalog.get(h.manifest.domain, h.manifest.action);
-    if (!desc) return false;
-    const collected = prepareNluCollected(ctx, catalog, desc, originalUtterance, { ...h.slots });
-    return startSlotfillOrDispatch(
-      ctx,
-      inbound,
-      {
-        domain: h.manifest.domain,
-        action: h.manifest.action,
-        slots: collected,
-        confidence: 1,
-      },
-      statePath,
-      originalUtterance,
-    );
-  }
-  const iState = loadInteractionState(statePath);
-  const session: DisambiguateSession = {
-    kind: "disambiguate",
-    candidates: candidatesFromManifests(hits.map((h) => h.manifest)),
-    updatedAt: Date.now(),
-    originalUtterance,
-  };
-  setSession(iState, inbound.userId, session, statePath);
-  await replyNluInteraction(ctx, inbound, draftNluDisambiguate(session.candidates), "disambiguate");
-  return true;
-}
-
 async function resolveNluWithLlm(
   ctx: FrameworkContext,
   inbound: InboundEnvelope,
   text: string,
-  hits: PrefilterHit[],
   statePath: string,
+  context?: { wizardActive?: boolean; stepId?: string },
 ): Promise<boolean> {
-  const classified = await classifyIntentWithNluLlm(text, hits);
+  const classified = await classifyIntentWithNluLlm(text, {
+    ...context,
+    onLlmTimeout: nluLlmTimeoutNotifier(ctx, inbound),
+  });
   if (classified.ok === false) {
     if (classified.kind === "clarify") {
       await replyNluInteraction(ctx, inbound, classified.text, "clarify");
       return true;
     }
+    nluLog.debug(`LLM 未命中（${classified.reason}）`);
     return false;
   }
   return startSlotfillOrDispatch(
@@ -213,6 +190,7 @@ async function resolveNluWithLlm(
       action: classified.intent.action,
       slots: classified.intent.slots,
       confidence: classified.intent.confidence,
+      sourceUtterance: text,
     },
     statePath,
     text,
@@ -256,21 +234,10 @@ export async function handleNluSlotMessage(
     }
     const utterance = session.originalUtterance ?? "";
     setSession(iState, inbound.userId, null, statePath);
-    const desc = getCommandCatalog().get(pick.domain, pick.action);
-    if (!desc) return false;
-    const narrowHit: PrefilterHit = {
-      manifest: commandToManifest(desc),
-      descriptor: desc,
-      slots: {},
-      score: 1,
-    };
-    if (loadNluLlmConfig()) {
-      return resolveNluWithLlm(ctx, inbound, utterance, [narrowHit], statePath);
-    }
     return startSlotfillOrDispatch(
       ctx,
       inbound,
-      { domain: pick.domain, action: pick.action, slots: {}, confidence: 1 },
+      { domain: pick.domain, action: pick.action, slots: {}, confidence: 1, sourceUtterance: utterance },
       statePath,
       utterance,
     );
@@ -293,6 +260,7 @@ export async function handleNluSlotMessage(
       domain: session.domain,
       action: session.action,
       slots: session.collected,
+      sourceUtterance: session.originalUtterance,
     });
   }
 
@@ -306,6 +274,7 @@ export async function handleNluSlotMessage(
           domain: session.domain,
           action: session.action,
           slots: collected,
+          sourceUtterance: session.originalUtterance,
         });
       }
       const nextIdx = findNextParamIndex(catalog, desc, collected);
@@ -355,6 +324,7 @@ export async function handleNluSlotMessage(
       domain: session.domain,
       action: session.action,
       slots: collected,
+      sourceUtterance: session.originalUtterance,
     });
   }
 
@@ -382,12 +352,12 @@ async function tryNluInterruptWizard(
   if (!session || session.kind !== "catalog_wizard") return false;
 
   const currentAction = session.collected._action;
-  const hits = prefilterNluCommands(text).filter((h) => h.manifest.action !== currentAction);
   if (!loadNluLlmConfig()) return false;
 
-  const classified = await classifyIntentWithNluLlm(text, hits, {
+  const classified = await classifyIntentWithNluLlm(text, {
     wizardActive: true,
     stepId: session.stepId,
+    onLlmTimeout: nluLlmTimeoutNotifier(ctx, inbound),
   });
   if (classified.ok === false) return false;
   const conf = classified.intent.confidence ?? 0;
@@ -405,6 +375,7 @@ async function tryNluInterruptWizard(
       action: classified.intent.action,
       slots: classified.intent.slots,
       confidence: classified.intent.confidence,
+      sourceUtterance: text,
     },
     statePath,
     text,
@@ -464,11 +435,33 @@ export async function tryDispatchNluText(ctx: FrameworkContext, text: string): P
     return false;
   }
 
-  const hits = prefilterNluCommands(text);
+  const trimmed = text.trim();
 
   if (!loadNluLlmConfig()) {
-    return resolveFromHitsLegacy(ctx, inbound, hits, statePath, text);
+    nluLog.debug("未配置 DEEPSEEK_API_KEY，NLU 不可用");
+    return false;
   }
 
-  return resolveNluWithLlm(ctx, inbound, text, hits, statePath);
+  return resolveNluWithLlm(ctx, inbound, trimmed, statePath);
+}
+
+/**
+ * NLU 未命中时的提示。默认不拦截（继续走 Agent），仅当 NLU_AGENT_FALLBACK_ON_MISS=0 时返回 true 阻止 Agent。
+ */
+export async function replyNluMissedCommandHint(
+  ctx: FrameworkContext,
+  inbound: InboundEnvelope,
+  _text: string,
+): Promise<boolean> {
+  if (!isNluEnabled() || !loadNluLlmConfig()) return false;
+  if (nluAgentFallbackOnMiss()) return false;
+  await ctx.notify.replyPlain(
+    inbound,
+    joinWxLines([
+      "没识别到可执行的命令。",
+      "请用斜杠格式，例如：/用户 验证 <密码>、/周期 列表",
+      "或发 /向导 查看菜单。",
+    ]),
+  );
+  return true;
 }

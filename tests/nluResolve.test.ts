@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { resetCommandCatalogForTests } from "../src/framework/commands/catalog.js";
 import { bootstrapCommandSystems } from "../src/commandModule/bootstrap.js";
-import { manifestsForNluLlm, prefilterNluCommands } from "../src/commandModule/nluPrefilter.js";
+import { allNluCommandManifests } from "../src/commandModule/nluManifests.js";
 import { intentAllowedByManifests } from "../src/commandModule/nluResolve.js";
 
 describe("nluResolve", () => {
@@ -10,20 +10,24 @@ describe("nluResolve", () => {
     bootstrapCommandSystems();
   });
 
-  it("manifestsForNluLlm narrows to prefilter hits only", () => {
-    const hits = prefilterNluCommands("我想向一个用户通知 宝宝 你好");
-    expect(hits.length).toBeGreaterThan(0);
-    const manifests = manifestsForNluLlm(hits);
-    expect(manifests.every((m) => hits.some((h) => h.manifest.intentId === m.intentId))).toBe(true);
+  it("allNluCommandManifests includes all NLU domains", () => {
+    const manifests = allNluCommandManifests();
+    expect(manifests.some((m) => m.intentId === "periodic.list")).toBe(true);
+    expect(manifests.some((m) => m.intentId === "user.list")).toBe(true);
     expect(manifests.some((m) => m.intentId === "user.notify")).toBe(true);
   });
 
-  it("intentAllowedByManifests rejects out-of-scope intent", () => {
-    const hits = prefilterNluCommands("用户列表");
-    const manifests = manifestsForNluLlm(hits);
+  it("intentAllowedByManifests rejects unknown intent", () => {
+    const manifests = allNluCommandManifests();
     expect(
       intentAllowedByManifests(
         { domain: "user", action: "notify", slots: {}, confidence: 1 },
+        manifests,
+      ),
+    ).toBe(true);
+    expect(
+      intentAllowedByManifests(
+        { domain: "user", action: "nonexistent", slots: {}, confidence: 1 },
         manifests,
       ),
     ).toBe(false);

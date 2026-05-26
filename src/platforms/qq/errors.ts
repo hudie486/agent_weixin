@@ -30,9 +30,10 @@ export function formatQqNetworkErrorMessage(
       "请逐项排查：",
       "1. 本机或服务器能否访问上述 HTTPS 地址（与微信 wechatbot 出网要求类似）",
       "2. 若走代理：在 .env 配置 HTTPS_PROXY / HTTP_PROXY（进程启动时会绑定全局 fetch）",
-      "3. 应用在 QQ 开放平台是否为沙箱：沙箱须加命令参数「沙箱」或向导中选沙箱",
+      "3. WebSocket Identify 须使用 QQBot {access_token}（由 ClientSecret 换取；Bot {AppID}.{Secret} 会 4004）",
+      "4. 应用在 QQ 开放平台是否为沙箱：沙箱须加命令参数「沙箱」或向导中选沙箱",
       `   （沙箱 API：${QQ_API_BASE_SANDBOX}；正式：${QQ_API_BASE_PROD}）`,
-      "4. 官方文档说明 WebSocket 推送将逐步迁移至 Webhook；当前本项目仍用 WSS，需保证能连上返回的 wss 地址",
+      "5. 官方文档说明 WebSocket 推送将逐步迁移至 Webhook；当前本项目仍用 WSS，需保证能连上返回的 wss 地址",
       "",
       "文档：https://github.com/tencent-connect/bot-docs",
     );

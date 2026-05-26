@@ -204,9 +204,38 @@ function formatNotify(name: string, snap: FriendSnap): string {
   return `「${n}」 ${zhStatusLine(snap)} ${pickEmoji(snap)}`.trim();
 }
 
-function changed(prev: FriendSnap | undefined, cur: FriendSnap): boolean {
-  if (!prev) return false;
+function changed(prev: FriendSnap, cur: FriendSnap): boolean {
   return prev.state !== cur.state || (prev.game || "") !== (cur.game || "");
+}
+
+/** 同一轮询周期内：上线+进游戏只推游戏；下线+退游戏只推下线；仍在线退游戏不推 */
+export function buildNotifyLine(prev: FriendSnap, cur: FriendSnap): string | null {
+  if (!changed(prev, cur)) return null;
+
+  const name = cur.name.trim() || "?";
+  const prevGame = (prev.game || "").trim();
+  const curGame = (cur.game || "").trim();
+
+  if (cur.state === 0) {
+    if (prev.state === 0) return null;
+    return `「${name}」 已下线 ${pickEmoji(cur)}`.trim();
+  }
+
+  if (prevGame && !curGame) return null;
+
+  if (curGame && curGame !== prevGame) {
+    return `「${name}」 游戏中：${curGame} ${pickEmoji(cur)}`.trim();
+  }
+
+  if (prev.state === 0 && cur.state !== 0) {
+    return `「${name}」 在线 ${pickEmoji(cur)}`.trim();
+  }
+
+  if (prev.state !== cur.state) {
+    return formatNotify(name, cur);
+  }
+
+  return null;
 }
 
 export type SteamMonitorDeps = {
@@ -241,9 +270,9 @@ export function startSteamFriendsMonitor(deps: SteamMonitorDeps): ReturnType<typ
         const p = prev.friends[id];
         next.friends[id] = cur;
         if (baseline) continue;
-        if (changed(p, cur)) {
-          lines.push(formatNotify(cur.name, cur));
-        }
+        if (!p) continue;
+        const line = buildNotifyLine(p, cur);
+        if (line) lines.push(line);
       }
 
       await saveState(next);

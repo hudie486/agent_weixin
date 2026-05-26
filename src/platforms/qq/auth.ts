@@ -43,7 +43,27 @@ export async function resolveQqApiToken(cfg: {
   clientSecret?: string;
   botToken?: string;
 }): Promise<string> {
-  if (cfg.botToken?.trim()) return cfg.botToken.trim();
+  const botToken = cfg.botToken?.trim();
+  if (botToken && !botToken.startsWith("Bot ")) return botToken;
   if (cfg.clientSecret?.trim()) return getQqAccessToken(cfg.appId, cfg.clientSecret.trim());
   throw new Error("QQ_BOT_TOKEN or QQ_BOT_CLIENT_SECRET required");
+}
+
+/**
+ * WebSocket Identify/Resume 的 token。
+ * OpenAPI v2 实测（含 ClientSecret 换票场景）须为 `QQBot {access_token}`；
+ * 文档中的 `Bot {appId}.{app_token}` 多为旧版/独立 BotToken，与 AppSecret 混用会 4004。
+ */
+export function formatQqGatewayIdentifyToken(raw: string): string {
+  const t = raw.trim();
+  if (t.startsWith("QQBot ") || t.startsWith("Bot ")) return t;
+  return `QQBot ${t}`;
+}
+
+export async function resolveQqGatewayIdentifyToken(cfg: {
+  appId: string;
+  clientSecret?: string;
+  botToken?: string;
+}): Promise<string> {
+  return formatQqGatewayIdentifyToken(await resolveQqApiToken(cfg));
 }

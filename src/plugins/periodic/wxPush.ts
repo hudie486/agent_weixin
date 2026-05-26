@@ -4,9 +4,12 @@ import type { PushResult } from "../../wxSession/types.js";
 import type { OutboundIntent } from "../../sessionManager/types.js";
 import { sessionRegistry } from "../../sessionManager/index.js";
 import { listPeriodicNotifyTargets, resolveDefaultNotifyInstanceId } from "../../shared/notifyTarget.js";
+import { createLogger } from "../../logger.js";
 import { parsePeriodicStdout } from "./stdoutParse.js";
 
 export { parsePeriodicStdout, PERIODIC_STDOUT_SEP } from "./stdoutParse.js";
+
+const log = createLogger("periodic-push");
 
 /** @deprecated 使用 parsePeriodicStdout */
 export function splitPeriodicStdout(text: string): string[] {
@@ -26,7 +29,7 @@ export async function pushPeriodicJobMessage(
 ): Promise<PushResult> {
   const targets = listPeriodicNotifyTargets(job);
   let ok = 0;
-  let lastErr: unknown;
+  const errors: string[] = [];
   for (const t of targets) {
     try {
       await sessionRegistry().deliver(
@@ -40,9 +43,16 @@ export async function pushPeriodicJobMessage(
       );
       ok += 1;
     } catch (e) {
-      lastErr = e;
+      const m = e instanceof Error ? e.message : String(e);
+      errors.push(`${t.userId}: ${m}`);
+      log.warn(`periodic push failed job=${job.id} user=${t.userId}: ${m}`);
     }
   }
-  if (ok === 0 && lastErr) throw lastErr;
+  if (ok === 0 && errors.length) {
+    throw new Error(errors.join("; "));
+  }
+  if (errors.length) {
+    log.warn(`periodic push partial job=${job.id} ok=${ok}/${targets.length} failed=${errors.join("; ")}`);
+  }
   return { status: "sent" };
 }

@@ -1,7 +1,7 @@
 import type { FrameworkContext } from "../framework/contracts/module.js";
 import type { ModuleDomain } from "../framework/contracts/module.js";
 import { getCommandCatalog } from "../framework/commands/catalog.js";
-import { commandToManifest, slotsToCollected, type NluCommandManifest } from "../framework/commands/nluManifest.js";
+import { commandToManifest, type NluCommandManifest } from "../framework/commands/nluManifest.js";
 import {
   actionResolversSingleton,
   commandRegistrySingleton,
@@ -17,6 +17,8 @@ export type NluResolvedIntent = {
   action: string;
   slots: Record<string, string>;
   confidence?: number;
+  /** 用户原始整句，用于槽位兜底与 modify 传参 */
+  sourceUtterance?: string;
 };
 
 export function findNluCommandManifest(domain: ModuleDomain, action: string): NluCommandManifest | undefined {
@@ -24,6 +26,8 @@ export function findNluCommandManifest(domain: ModuleDomain, action: string): Nl
   if (!cmd) return undefined;
   return commandToManifest(cmd);
 }
+
+import { collectNluSlots } from "./paramCollector.js";
 
 export async function dispatchNluIntent(ctx: FrameworkContext, intent: NluResolvedIntent): Promise<boolean> {
   const catalog = getCommandCatalog();
@@ -39,12 +43,23 @@ export async function dispatchNluIntent(ctx: FrameworkContext, intent: NluResolv
     return true;
   }
 
-  const collected = slotsToCollected(cmd, intent.slots);
+  const collected = collectNluSlots(
+    ctx,
+    catalog,
+    cmd,
+    intent.slots,
+    intent.sourceUtterance,
+  );
   const sub = cmd.buildSub(collected);
   const resolver = actionResolversSingleton[intent.domain as keyof typeof actionResolversSingleton]
     ?? catalogResolverFor(intent.domain);
   const parsed = resolver(sub);
   if (!parsed) return false;
+
+  await ctx.notify.replyPlain(
+    ctx.envelope ?? ctx.userId,
+    `好的，接下来：${cmd.summary}`,
+  );
 
   return commandRegistrySingleton.dispatch(ctx, {
     domain: intent.domain,
@@ -56,4 +71,4 @@ export async function dispatchNluIntent(ctx: FrameworkContext, intent: NluResolv
   });
 }
 
-export { tryDispatchNluText, handleNluSlotMessage, handleWizardOrNluMessage } from "./nluInbound.js";
+export { tryDispatchNluText, handleNluSlotMessage, handleWizardOrNluMessage, replyNluMissedCommandHint } from "./nluInbound.js";
