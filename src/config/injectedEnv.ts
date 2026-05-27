@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "./paths.js";
 import { resolveEnvSourceUserId } from "../shared/resourceAudience/store.js";
 
 /** 可由 `/环境 set` 写入，启动时合并进 process.env（不落日志明文） */
 export function injectedEnvPath(): string {
-  return process.env.INJECTED_ENV_PATH?.trim() || path.join(process.cwd(), "data", "injected-env.json");
+  return dataPaths.injectedEnv();
 }
 
 type InjectedEnvStateV2 = {

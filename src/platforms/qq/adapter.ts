@@ -1,4 +1,4 @@
-import path from "node:path";
+import { dataPaths } from "../../config/paths.js";
 import { loadAgentConfig } from "../../agent/index.js";
 import { loadSessionStore } from "../../session/store.js";
 import { createDefaultSessionNotify } from "../../sessionManager/index.js";
@@ -27,8 +27,7 @@ export async function startQqPlatformOnce(): Promise<void> {
   }
 
   const sessionPath =
-    process.env.QQ_SESSION_STORE_PATH?.trim() ||
-    path.join(process.cwd(), "data", `sessions.${cfg.instanceId}.json`);
+    dataPaths.qqSession(cfg.instanceId);
   const session = loadSessionStore(sessionPath);
   const agentCfg = loadAgentConfig();
   const notify = createDefaultSessionNotify();

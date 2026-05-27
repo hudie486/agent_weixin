@@ -1,5 +1,5 @@
-import type { CommandParamDef } from "../framework/commands/descriptor.js";
-import type { DisambiguateCandidate } from "./interactionSession.js";
+import type { CommandParamDef } from "../../framework/commands/descriptor.js";
+import type { DisambiguateCandidate } from "../interactionSession.js";
 
 /** NLU 填参追问草稿（非向导编号菜单） */
 export function draftNluParamPrompt(

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { resetCommandCatalogForTests } from "../src/framework/commands/catalog.js";
 import { bootstrapCommandSystems } from "../src/commandModule/bootstrap.js";
-import { scoreNluDomainMatches } from "../src/commandModule/nluMatchScores.js";
+import { scoreNluDomainMatches } from "../src/commandModule/nlu/matchScores.js";
 
 describe("nluMatchScores", () => {
   beforeEach(() => {

@@ -45,13 +45,13 @@ function withTargetAfterAction(
   return trimmed ? `${action} for ${target} ${trimmed}` : `${action} for ${target}`;
 }
 
-function buildEnvTerminalSub({
+async function buildEnvTerminalSub({
   collected,
   inbound,
 }: {
   collected: WizardCollected;
   inbound: InboundEnvelope;
-}): string | undefined {
+}): Promise<string | undefined> {
   const flow = collected._flow;
   if (flow === "help") return "help";
   if (flow === "list") return withTargetAfterAction("list", "", inbound, collected);
@@ -244,7 +244,7 @@ export function registerInjectedEnvWizard(): void {
       env_term: { kind: "terminal" },
     },
     onTerminal: async ({ ctx, inbound, collected }) => {
-      const sub = buildEnvTerminalSub({ collected, inbound });
+      const sub = await buildEnvTerminalSub({ collected, inbound });
       if (!sub) {
         await ctx.notify.replyText(inbound, "向导数据不完整，无法生成命令。", "error");
         return;

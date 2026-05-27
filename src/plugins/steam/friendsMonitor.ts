@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fetch, ProxyAgent, Agent, type Dispatcher } from "undici";
 import type { NotifyChannel } from "../../notify/channel.js";
+import { dataPaths } from "../../config/paths.js";
 import { createLogger } from "../../logger.js";
 
 const log = createLogger("steam-friends");
@@ -20,7 +21,7 @@ type StateFile = {
 function statePath(): string {
   const raw = process.env.STEAM_MONITOR_STATE_PATH?.trim();
   if (raw) return raw;
-  return path.join(process.cwd(), "data", "steam-friends-state.json");
+  return dataPaths.steamFriendsState();
 }
 
 function monitorIntervalMs(): number {

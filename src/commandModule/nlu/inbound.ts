@@ -1,38 +1,38 @@
-import type { FrameworkContext } from "../framework/contracts/module.js";
-import type { InboundEnvelope } from "../sessionManager/types.js";
-import { getCommandCatalog } from "../framework/commands/catalog.js";
-import { joinWxLines } from "../util/wxRichText.js";
-import { handleWizardMessage } from "../wizard/engine.js";
-import type { WizardHandlerCtx } from "../wizard/types.js";
+import type { FrameworkContext } from "../../framework/contracts/module.js";
+import type { InboundEnvelope } from "../../sessionManager/types.js";
+import { getCommandCatalog } from "../../framework/commands/catalog.js";
+import { joinWxLines } from "../../util/wxRichText.js";
+import { handleWizardMessage } from "../../wizard/engine.js";
+import type { WizardHandlerCtx } from "../../wizard/types.js";
 import {
   clearAllInteractionPending,
   clearWizardPending,
   getInteractionSession,
   wizardStateFilePath,
-} from "../wizard/stateStore.js";
-import { dispatchNluIntent, type NluResolvedIntent } from "./nlu.js";
+} from "../../wizard/stateStore.js";
+import { dispatchNluIntent, type NluResolvedIntent } from "./core.js";
 import {
   draftNluCancel,
   draftNluInvalidChoice,
 
-} from "./nluDialogue.js";
-import { styleNluDialogue, type NluStyleKind } from "./nluPromptStyle.js";
+} from "./dialogue.js";
+import { styleNluDialogue, type NluStyleKind } from "./promptStyle.js";
 import {
   isSessionExpired,
   loadInteractionState,
   setSession,
   type DisambiguateSession,
   type NluSlotfillSession,
-} from "./interactionSession.js";
+} from "../interactionSession.js";
 import {
   isNluEnabled,
   nluAgentFallbackOnMiss,
   nluInterruptMin,
   loadNluLlmConfig,
   NLU_LLM_RETRY_USER_HINT,
-} from "./nluConfig.js";
-import { getCommandRegistrySingleton } from "../framework/commands/runtime.js";
-import type { CommandParamDef } from "../framework/commands/descriptor.js";
+} from "./config.js";
+import { getCommandRegistrySingleton } from "../../framework/commands/runtime.js";
+import type { CommandParamDef } from "../../framework/commands/descriptor.js";
 import {
   applyParamAnswer,
   buildNluParamPromptDraft,
@@ -40,9 +40,9 @@ import {
   findNextParamIndex,
   getActiveParams,
   isParamsComplete,
-} from "./paramCollector.js";
-import { classifyIntentWithNluLlm } from "./nluResolve.js";
-import { createLogger } from "../logger.js";
+} from "../paramCollector.js";
+import { classifyIntentWithNluLlm } from "./resolve.js";
+import { createLogger } from "../../logger.js";
 
 const nluLog = createLogger("nlu");
 

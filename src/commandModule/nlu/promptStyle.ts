@@ -4,8 +4,8 @@
  * 仅用于 NLU 流程中的对话：填参追问、消歧、澄清、取消、校验重试等。
  * 命令执行结果（列表、成功/失败、业务数据）由各模块 replyText/replyPlain 直发，不得调用本模块。
  */
-import type { CommandParamDef } from "../framework/commands/descriptor.js";
-import { loadNluLlmConfig } from "./nluConfig.js";
+import type { CommandParamDef } from "../../framework/commands/descriptor.js";
+import { loadNluLlmConfig } from "./config.js";
 
 /** 仅 NLU 交互话术，不含命令结果 */
 export type NluStyleKind = "slot_prompt" | "disambiguate" | "error" | "cancel" | "clarify";

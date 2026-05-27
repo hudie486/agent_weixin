@@ -82,7 +82,7 @@ export type WizardDef = {
   buildTerminalSub?: (args: {
     collected: WizardCollected;
     inbound: InboundEnvelope;
-  }) => string | undefined | Promise<string | undefined>;
+  }) => Promise<string | undefined>;
 };
 
 export type WizardPending = {

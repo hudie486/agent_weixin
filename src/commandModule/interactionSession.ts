@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "../config/paths.js";
 import type { ModuleDomain } from "../framework/contracts/module.js";
 import type { NluCommandManifest } from "../framework/commands/nluManifest.js";
 import type { MenuOptionDef, WizardCollected } from "../wizard/types.js";
@@ -48,14 +49,11 @@ export type InteractionStateFile = {
 };
 
 export function interactionStateFilePath(): string {
-  return (
-    process.env.INTERACTION_STATE_PATH?.trim() ||
-    path.join(process.cwd(), "data", "interaction-state.json")
-  );
+  return dataPaths.interactionState();
 }
 
 function legacyWizardStatePath(): string {
-  return process.env.WIZARD_STATE_PATH?.trim() || path.join(process.cwd(), "data", "wizard-state.json");
+  return dataPaths.wizardStateLegacy();
 }
 
 function ttlMs(): number {

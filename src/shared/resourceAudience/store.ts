@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "../../config/paths.js";
 
 export type ResourceAudienceState = {
   version: 1;
@@ -11,7 +12,7 @@ export type ResourceAudienceState = {
 function storePath(): string {
   return (
     process.env.RESOURCE_AUDIENCE_PATH?.trim() ||
-    path.join(process.cwd(), "data", "resource-audience.json")
+    dataPaths.resourceAudience()
   );
 }
 

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { loadInjectedEnvIntoProcess } from "./config/injectedEnv.js";
+import { dataPaths } from "./config/paths.js";
 import { TransportError, WeChatBot, type IncomingMessage } from "@wechatbot/wechatbot";
 import { isRetryableNetworkError } from "./util/networkRetry.js";
 import type { QrLoginCallbacks } from "@wechatbot/wechatbot";
@@ -7,7 +8,6 @@ import { loadAgentConfig } from "./agent/index.js";
 import { createNotifyChannel } from "./notify/channel.js";
 import { createPerKeyQueue } from "./tasks/perUserQueue.js";
 import { loadSessionStore, saveSessionStore } from "./session/store.js";
-import path from "node:path";
 import { handleIncomingMessage } from "./handler/incoming.js";
 import { parseSlash } from "./commands/slashParse.js";
 import { startPeriodicModuleScheduler } from "./modules/periodic/module.js";
@@ -24,7 +24,7 @@ import { bindWechatInbound } from "./platforms/wechat/inbound.js";
 const log = createLogger("main");
 
 function sessionPath(): string {
-  return process.env.SESSION_STORE_PATH?.trim() || path.join(process.cwd(), "data", "sessions.json");
+  return dataPaths.sessions();
 }
 
 function sleep(ms: number): Promise<void> {
@@ -110,7 +110,7 @@ async function bootstrap(): Promise<void> {
     console.error("AGENT 配置错误", e);
     process.exit(1);
   }
-  const storageDir = process.env.WECHATBOT_STORAGE_DIR?.trim() || path.join(process.cwd(), "data", ".wechatbot");
+  const storageDir = dataPaths.wechatbotStorage();
   const logLevel = (process.env.WECHATBOT_LOG_LEVEL?.trim() || "info") as "debug" | "info" | "warn" | "error";
   const baseUrl = process.env.WECHATBOT_BASE_URL?.trim();
 

@@ -63,7 +63,7 @@ async function resolveUserPeriodicJob(uid: string, idOrPrefix: string): Promise<
   return st.jobs.find((j) => j.notifyUserId === uid && (j.id === idOrPrefix || j.id.startsWith(idOrPrefix)));
 }
 
-async function buildPeriodicTerminalSub({
+export async function buildPeriodicTerminalSub({
   collected,
   inbound,
 }: {
@@ -83,7 +83,6 @@ async function buildPeriodicTerminalSub({
     const cronNorm = cronRaw.replace(/\s+/g, " ");
     let rest = `schedule cron ${cronNorm}`;
     if (sn) rest += ` short ${sn}`;
-    rest += sn ? ` short ${sn}` : "";
     rest += ` ${delivery} ${desc}`;
     return withTargetAfterAction("create", rest, inbound, collected);
   }

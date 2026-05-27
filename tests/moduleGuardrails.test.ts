@@ -4,7 +4,7 @@ import path from "node:path";
 
 const SRC_DIR = path.resolve("src");
 const MODULES_DIR = path.join(SRC_DIR, "modules");
-const GUARDED_DOMAINS = ["periodic", "code", "env"] as const;
+const GUARDED_DOMAINS = ["periodic", "code", "env", "user", "qq"] as const;
 const REQUIRED_FILES = ["keywords.ts", "commands.ts", "service.ts", "wizard.ts", "module.ts"] as const;
 
 function listTsFiles(dir: string): string[] {

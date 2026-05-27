@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { classifyNluWithLlm } from "../src/commandModule/nluLlmClient.js";
+import { classifyNluWithLlm } from "../src/commandModule/nlu/llmClient.js";
 import type { NluCommandManifest } from "../src/framework/commands/nluManifest.js";
 
 const manifest: NluCommandManifest[] = [

@@ -10,7 +10,7 @@ import {
   loadQqBotConfigFile,
   saveQqBotConfigFile,
 } from "../../plugins/qqBot/store.js";
-import { formatQqCredentialValidationError } from "../user/onboarding.js";
+import { formatQqCredentialValidationError } from "../../platforms/qq/messages.js";
 
 function maskSecret(s: string): string {
   const t = s.trim();

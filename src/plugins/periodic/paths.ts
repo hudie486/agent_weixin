@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "../../config/paths.js";
 /** 周期作业默认入口（相对作业目录） */
 export const SCRIPT_ENTRY = "run.mjs";
 
@@ -7,7 +8,7 @@ const ALLOWED_ENTRY_EXT = new Set([".mjs", ".js", ".cjs"]);
 
 /** 每条任务作业目录：PERIODIC_JOB_ROOT/<jobId>/ */
 export function periodicJobRoot(): string {
-  return path.resolve(process.env.PERIODIC_JOB_ROOT?.trim() || path.join(process.cwd(), "data", "periodic-jobs"));
+  return dataPaths.periodicJobsRoot();
 }
 
 export function jobWorkspaceAbsolute(jobId: string): string {

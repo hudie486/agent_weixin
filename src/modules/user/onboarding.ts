@@ -1,7 +1,8 @@
 import type { FrameworkContext } from "../../framework/contracts/module.js";
 import { joinWxLines } from "../../util/wxRichText.js";
-import { formatQqNetworkErrorMessage } from "../../platforms/qq/errors.js";
-import type { QqBotConfig } from "../../platforms/qq/config.js";
+import { formatQqCredentialValidationError } from "../../platforms/qq/messages.js";
+
+export { formatQqCredentialValidationError };
 
 export function renderAddUserPlatformPicker(): string {
   return joinWxLines([
@@ -27,11 +28,6 @@ export function renderQqEndUserOnboardingGuide(): string {
     "3. 若设置了环境变量 ALLOWED_USER_IDS，须由管理员将 qq:c2c:… 加入该列表",
     "4. 管理员可用 /用户 列表 查看已记录 userId",
   ]);
-}
-
-export function formatQqCredentialValidationError(e: unknown, cfg?: QqBotConfig): string {
-  const raw = e instanceof Error ? e.message : String(e);
-  return formatQqNetworkErrorMessage("validate", raw, cfg);
 }
 
 export async function replyAddUserPlatformPicker(ctx: FrameworkContext): Promise<void> {

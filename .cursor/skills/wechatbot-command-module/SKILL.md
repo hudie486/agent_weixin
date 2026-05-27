@@ -21,7 +21,7 @@ disable-model-invocation: true
 
 ## 代码布局
 
-- `src/commandModule/` — 装配（`bootstrap.ts`）、NLU（`nlu.ts`、`nluInbound.ts`、`nluLlmClient.ts`、`nluManifests.ts`）、`interactionSession.ts`、`paramCollector.ts`
+- `src/commandModule/` — 装配（`bootstrap.ts`）、`nlu/` 子目录（`nluInbound.ts`、`nluLlmClient.ts`、`nluManifests.ts` 等，由 `nlu.ts` 再导出）、`interactionSession.ts`、`paramCollector.ts`
 - `src/framework/commands/` — Catalog、Registry、Router（无业务命令）
 - `src/modules/<域>/catalog.ts` — **该域全部命令定义**
 - `.cursor/skills/wechatbot-<域>-commands/` — 该域命令说明 Skill（与 Catalog 对齐）

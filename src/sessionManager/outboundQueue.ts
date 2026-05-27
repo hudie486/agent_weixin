@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "../config/paths.js";
 import type { NotifyChannel } from "../notify/channel.js";
 import type { OutboundPayload, PlatformId } from "./types.js";
 import { relayOutbound } from "./outboundRelay.js";
@@ -32,7 +33,7 @@ function queuePath(): string {
     process.env.OUTBOUND_RETRY_QUEUE_PATH?.trim() ||
     process.env.PERIODIC_RETRY_QUEUE_PATH?.trim();
   if (p) return path.resolve(p);
-  return path.resolve(process.cwd(), "data", "outbound-retry-queue.json");
+  return path.resolve(dataPaths.outboundRetryQueue());
 }
 
 function emptyState(): OutboundQueueState {

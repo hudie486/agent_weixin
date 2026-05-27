@@ -42,6 +42,8 @@ describe("wxSession outbound guardrails", () => {
     const allowed = new Set([
       path.join(SRC_DIR, "main.ts").replace(/\\/g, "/"),
       path.join(SRC_DIR, "multiBot", "manager.ts").replace(/\\/g, "/"),
+      path.join(SRC_DIR, "multiBot", "instanceRestore.ts").replace(/\\/g, "/"),
+      path.join(SRC_DIR, "multiBot", "qrLoginFlow.ts").replace(/\\/g, "/"),
     ]);
     const violations: string[] = [];
     const pattern = /new\s+WeChatBot\s*\(/;

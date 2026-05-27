@@ -1,12 +1,12 @@
-import type { NluCommandManifest } from "../framework/commands/nluManifest.js";
-import type { ModuleDomain } from "../framework/contracts/module.js";
+import type { NluCommandManifest } from "../../framework/commands/nluManifest.js";
+import type { ModuleDomain } from "../../framework/contracts/module.js";
 import {
   loadNluLlmConfig,
   nluConfidenceMin,
   nluLlmAttemptTimeoutMs,
   nluLlmRetryMax,
-} from "./nluConfig.js";
-import { createLogger } from "../logger.js";
+} from "./config.js";
+import { createLogger } from "../../logger.js";
 
 const nluLog = createLogger("nlu");
 

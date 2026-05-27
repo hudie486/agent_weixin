@@ -1,7 +1,7 @@
 import type { WeChatBot } from "@wechatbot/wechatbot";
 import type { SessionStoreData } from "../session/store.js";
 import { loadSessionStore } from "../session/store.js";
-import path from "node:path";
+import { dataPaths } from "../config/paths.js";
 import { wxSessionRegistry } from "../wxSession/registry.js";
 import { createSessionNotifyPort, sessionRegistry, type SessionNotifyPort } from "../sessionManager/index.js";
 import { registerWechatBotForDeliver } from "../platforms/wechat/deliver.js";
@@ -26,8 +26,8 @@ export function createNotifyChannel(bot: WeChatBot, opts?: CreateNotifyChannelOp
   const sessionPath =
     opts?.sessionPath?.trim() ||
     (instanceId === "admin-main"
-      ? process.env.SESSION_STORE_PATH?.trim() || path.join(process.cwd(), "data", "sessions.json")
-      : path.join(process.cwd(), "data", `sessions.${instanceId}.json`));
+      ? dataPaths.sessions()
+      : dataPaths.sessionForInstance(instanceId));
   const session = opts?.session ?? loadSessionStore(sessionPath);
   const hub = wxSessionRegistry().register({
     instanceId,

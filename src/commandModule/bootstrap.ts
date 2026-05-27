@@ -11,9 +11,13 @@ import { registerPeriodicCommandSystem } from "../modules/periodic/commands.js";
 import { registerEnvCommandSystem } from "../modules/env/commands.js";
 import { registerQqCommandSystem } from "../modules/qq/catalog.js";
 import { validateAllRegisteredCommands } from "../framework/commands/validateDescriptor.js";
+import { registerUserPurgeHandlers } from "../modules/user/registerPurgeHandlers.js";
+import { registerModulePorts } from "../bootstrap/modulePorts.js";
 
 /** 装配全部已接入业务域的命令体系 */
 export function bootstrapCommandSystems(catalog: CommandCatalog = getCommandCatalog()): CommandCatalog {
+  registerModulePorts();
+  registerUserPurgeHandlers();
   catalog.setCatalogWizardMeta({
     domainPickPrompt: "请选择要使用的功能模块：",
   });

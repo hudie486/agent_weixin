@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 import type { GenerationStatus, PeriodicJob, PeriodicStateFile } from "./types.js";
 import { stripIllFormedUtf16 } from "../../util/unicode.js";
 import { cronTzName, migrateScheduleJobCron, nextCronRunMs } from "./cron.js";
+import { dataPaths } from "../../config/paths.js";
 import { SCRIPT_ENTRY, safeRemoveJobWorkspace } from "./paths.js";
 import type { PeriodicPayload, ScriptPayload } from "./types.js";
 
@@ -31,8 +31,6 @@ function normalizePeriodicState(data: PeriodicStateFile): boolean {
   return changed;
 }
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 const PATCH_KEYS = new Set([
   "generationStatus",
   "payload",
@@ -45,14 +43,8 @@ const PATCH_KEYS = new Set([
   "notifyTargets",
 ]);
 
-function projectRoot(): string {
-  const fromFile = path.resolve(__dirname, "..", "..", "..");
-  if (fs.existsSync(path.join(fromFile, "package.json"))) return fromFile;
-  return process.cwd();
-}
-
 export function periodicStatePath(): string {
-  return process.env.PERIODIC_STATE_PATH?.trim() || path.join(projectRoot(), "data", "periodic-state.json");
+  return dataPaths.periodicState();
 }
 
 function sanitizeStr(s: string): string {

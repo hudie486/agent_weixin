@@ -1,7 +1,7 @@
 import type { FrameworkContext } from "../../framework/contracts/module.js";
 import { joinWxLines } from "../../util/wxRichText.js";
 import { isAdminVerified } from "../../security/adminAuth.js";
-import { upsertManagedUser } from "../user/store.js";
+import { upsertManagedUserViaPort } from "../../shared/managedUserPort.js";
 import { clearQqTokenCache } from "../../platforms/qq/auth.js";
 import { validateQqBotCredentials } from "../../plugins/qqBot/validate.js";
 import type { QqBotConfig } from "../../platforms/qq/config.js";
@@ -15,7 +15,7 @@ import {
 import type { QqAction } from "./keywords.js";
 import { qqCommandSpecs } from "./keywords.js";
 import { formatCommandHelp } from "../../framework/commands/helpText.js";
-import { formatQqCredentialValidationError } from "../user/onboarding.js";
+import { formatQqCredentialValidationError } from "../../platforms/qq/messages.js";
 
 async function requireAdmin(ctx: FrameworkContext): Promise<boolean> {
   if (isAdminVerified(ctx.userId)) return true;
@@ -67,7 +67,7 @@ export async function executeQqAction(ctx: FrameworkContext, action: QqAction, r
   }
 
   if (action === "register") {
-    const u = upsertManagedUser(ctx.userId, { enabled: true });
+    const u = upsertManagedUserViaPort(ctx.userId, { enabled: true });
     await ctx.notify.replyText(
       replyTo,
       `已登记 QQ 用户：${u.userId}\n后续可使用 /帮助、/向导 与其它模块命令。`,

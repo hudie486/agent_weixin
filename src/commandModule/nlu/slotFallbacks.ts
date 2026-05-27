@@ -1,4 +1,4 @@
-import type { CommandDescriptor } from "../framework/commands/descriptor.js";
+import type { CommandDescriptor } from "../../framework/commands/descriptor.js";
 
 /**
  * 槽位结构性兜底（不解析口语关键词）：

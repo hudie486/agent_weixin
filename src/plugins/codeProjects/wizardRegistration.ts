@@ -43,13 +43,13 @@ function withTargetAfterAction(
   return trimmed ? `${action} for ${target} ${trimmed}` : `${action} for ${target}`;
 }
 
-function buildCodeTerminalSub({
+async function buildCodeTerminalSub({
   collected,
   inbound,
 }: {
   collected: WizardCollected;
   inbound: InboundEnvelope;
-}): string | undefined {
+}): Promise<string | undefined> {
   const flow = collected._flow;
   if (flow === "list") return withTargetAfterAction("list", "", inbound, collected);
   if (flow === "add") {
@@ -298,7 +298,7 @@ export function registerCodeProjectsWizard(): void {
       code_term: { kind: "terminal" },
     },
     onTerminal: async ({ ctx, inbound, collected }) => {
-      const sub = buildCodeTerminalSub({ collected, inbound });
+      const sub = await buildCodeTerminalSub({ collected, inbound });
       if (!sub) {
         await ctx.notify.replyText(inbound, "向导数据不完整，无法生成命令。", "error");
         return;

@@ -337,7 +337,7 @@ async function runTerminal(
   const domain = def.commandDomain;
   let previewLine = "";
   if (domain && def.buildTerminalSub) {
-    const raw = await Promise.resolve(def.buildTerminalSub({ collected, inbound }));
+    const raw = await def.buildTerminalSub({ collected, inbound });
     const sub = raw?.replace(/\s+/g, " ").trim();
     if (sub) previewLine = formatWizardExecPreview(domain, sub);
   }

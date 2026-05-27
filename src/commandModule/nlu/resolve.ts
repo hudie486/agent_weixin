@@ -1,11 +1,11 @@
-import type { NluCommandManifest } from "../framework/commands/nluManifest.js";
-import { getCommandCatalog } from "../framework/commands/catalog.js";
-import { classifyNluWithLlm, type NluLlmCallContext, type NluLlmResult } from "./nluLlmClient.js";
-import { allNluCommandManifests, nluDomainSlashHints } from "./nluManifests.js";
-import { manifestsForDomainRetry } from "./nluDomainRetry.js";
-import { logNluMatchScores } from "./nluMatchScores.js";
-import type { NluResolvedIntent } from "./nlu.js";
-import { createLogger } from "../logger.js";
+import type { NluCommandManifest } from "../../framework/commands/nluManifest.js";
+import { getCommandCatalog } from "../../framework/commands/catalog.js";
+import { classifyNluWithLlm, type NluLlmCallContext, type NluLlmResult } from "./llmClient.js";
+import { allNluCommandManifests, nluDomainSlashHints } from "./manifests.js";
+import { manifestsForDomainRetry } from "./domainRetry.js";
+import { logNluMatchScores } from "./matchScores.js";
+import type { NluResolvedIntent } from "./core.js";
+import { createLogger } from "../../logger.js";
 
 const nluLog = createLogger("nlu");
 

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "../../config/paths.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { SshTarget } from "./types.js";
@@ -152,7 +153,7 @@ export async function scpRemoteArtifactToTemp(
     return { ok: false, reason: "SSH 拉回产物暂不支持含通配的 glob，请配置不含 * 的相对路径" };
   }
   const remoteFilePosix = `${target.remotePath.replace(/\/$/, "")}/${rel}`;
-  const tmpDir = path.join(process.cwd(), "data", "code-artifacts-tmp");
+  const tmpDir = dataPaths.codeArtifactsTmp();
   fs.mkdirSync(tmpDir, { recursive: true });
   const base = path.basename(rel);
   const localOut = path.join(tmpDir, `${Date.now()}_${base}`);

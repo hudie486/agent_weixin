@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { draftNluParamPrompt } from "../src/commandModule/nluDialogue.js";
-import { fallbackStyleNluDialogue } from "../src/commandModule/nluPromptStyle.js";
+import { draftNluParamPrompt } from "../src/commandModule/nlu/dialogue.js";
+import { fallbackStyleNluDialogue } from "../src/commandModule/nlu/promptStyle.js";
 
 describe("nluPromptStyle", () => {
   it("drafts secret param without numbered menu", () => {

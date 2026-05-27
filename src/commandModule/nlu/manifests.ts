@@ -1,7 +1,7 @@
-import { getCommandCatalog } from "../framework/commands/catalog.js";
-import type { NluCommandManifest } from "../framework/commands/nluManifest.js";
-import { exportAllNluManifests } from "../framework/commands/nluManifest.js";
-import type { ModuleDomain } from "../framework/contracts/module.js";
+import { getCommandCatalog } from "../../framework/commands/catalog.js";
+import type { NluCommandManifest } from "../../framework/commands/nluManifest.js";
+import { exportAllNluManifests } from "../../framework/commands/nluManifest.js";
+import type { ModuleDomain } from "../../framework/contracts/module.js";
 
 const NLU_DOMAINS: ModuleDomain[] = ["user", "code", "periodic", "env", "qq"];
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { resetCommandCatalogForTests } from "../src/framework/commands/catalog.js";
-import { allNluCommandManifests } from "../src/commandModule/nluManifests.js";
+import { allNluCommandManifests } from "../src/commandModule/nlu/manifests.js";
 
 describe("nlu bootstrap", () => {
   beforeEach(() => {

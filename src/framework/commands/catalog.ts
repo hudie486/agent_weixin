@@ -196,8 +196,12 @@ export class CommandCatalog {
 
 let catalogSingleton: CommandCatalog | undefined;
 
+export function createCommandCatalog(): CommandCatalog {
+  return new CommandCatalog();
+}
+
 export function getCommandCatalog(): CommandCatalog {
-  if (!catalogSingleton) catalogSingleton = new CommandCatalog();
+  if (!catalogSingleton) catalogSingleton = createCommandCatalog();
   return catalogSingleton;
 }
 

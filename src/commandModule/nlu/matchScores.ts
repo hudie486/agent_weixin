@@ -1,8 +1,8 @@
-import { getCommandCatalog, type CommandCatalog } from "../framework/commands/catalog.js";
-import type { CommandDescriptor } from "../framework/commands/descriptor.js";
-import type { ModuleDomain } from "../framework/contracts/module.js";
-import { exportAllNluManifests } from "../framework/commands/nluManifest.js";
-import { createLogger } from "../logger.js";
+import { getCommandCatalog, type CommandCatalog } from "../../framework/commands/catalog.js";
+import type { CommandDescriptor } from "../../framework/commands/descriptor.js";
+import type { ModuleDomain } from "../../framework/contracts/module.js";
+import { exportAllNluManifests } from "../../framework/commands/nluManifest.js";
+import { createLogger } from "../../logger.js";
 
 const nluLog = createLogger("nlu");
 

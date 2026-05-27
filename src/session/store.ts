@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "../config/paths.js";
 
 export type SessionStoreData = {
   userChatIds: Record<string, string>;
@@ -22,7 +23,7 @@ export type SessionStoreData = {
 };
 
 const defaultPath = () =>
-  path.resolve(process.env.SESSION_STORE_PATH?.trim() || path.join(process.cwd(), "data", "sessions.json"));
+  path.resolve(dataPaths.sessions());
 
 function atomicWrite(file: string, data: string): void {
   const dir = path.dirname(file);

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "../../config/paths.js";
 
 export type ManagedUser = {
   userId: string;
@@ -22,11 +23,11 @@ type AdminAuthConfig = {
 };
 
 function usersStorePath(): string {
-  return process.env.USER_STORE_PATH?.trim() || path.join(process.cwd(), "data", "users.json");
+  return dataPaths.users();
 }
 
 function adminAuthPath(): string {
-  return process.env.ADMIN_AUTH_PATH?.trim() || path.join(process.cwd(), "data", "admin-auth.json");
+  return dataPaths.adminAuth();
 }
 
 function writeAtomic(file: string, text: string): void {

@@ -1,12 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "../../config/paths.js";
 import type { CodeProjectsState, CodeProject } from "./types.js";
 
 function defaultStorePath(): string {
-  return (
-    process.env.CODE_PROJECTS_PATH?.trim() ||
-    path.join(process.cwd(), "data", "code-projects.json")
-  );
+  return dataPaths.codeProjects();
 }
 
 function atomicWrite(file: string, data: string): void {

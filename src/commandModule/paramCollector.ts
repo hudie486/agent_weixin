@@ -5,9 +5,9 @@ import { joinWxLines } from "../util/wxRichText.js";
 import { formatOptionsList, formatWizardMenuIndex } from "../wizard/formatMenu.js";
 import type { MenuOptionDef } from "../wizard/types.js";
 import { buildParamOptionsList, resolveParamValue } from "./paramResolve.js";
-import { draftNluParamPrompt } from "./nluDialogue.js";
+import { draftNluParamPrompt } from "./nlu/dialogue.js";
 import { slotsToCollected } from "../framework/commands/nluManifest.js";
-import { applyNluSlotFallbacks } from "./nluSlotFallbacks.js";
+import { applyNluSlotFallbacks } from "./nlu/slotFallbacks.js";
 
 export function getActiveParams(
   catalog: CommandCatalog,

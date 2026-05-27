@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { dataPaths } from "../../config/paths.js";
 
 export type QqBotConfigFile = {
   version: 1;
@@ -15,7 +16,7 @@ export type QqBotConfigFile = {
 };
 
 function defaultPath(): string {
-  return process.env.QQ_BOT_CONFIG_PATH?.trim() || path.join(process.cwd(), "data", "qq-bot-config.json");
+  return dataPaths.qqBotConfig();
 }
 
 function atomicWrite(file: string, text: string): void {

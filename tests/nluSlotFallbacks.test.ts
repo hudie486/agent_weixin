@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { resetCommandCatalogForTests } from "../src/framework/commands/catalog.js";
 import { bootstrapCommandSystems } from "../src/commandModule/bootstrap.js";
 import { getCommandCatalog } from "../src/framework/commands/catalog.js";
-import { applyNluSlotFallbacks } from "../src/commandModule/nluSlotFallbacks.js";
+import { applyNluSlotFallbacks } from "../src/commandModule/nlu/slotFallbacks.js";
 import { collectNluSlots } from "../src/commandModule/paramCollector.js";
 import type { FrameworkContext } from "../src/framework/contracts/module.js";
 
