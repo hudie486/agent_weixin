@@ -42,7 +42,8 @@ function buildSystemPrompt(manifests: NluCommandManifest[], domainHints: string[
       : "";
   return [
     "你是微信/QQ 机器人的命令意图解析器。只输出 JSON，不要 markdown。",
-    "从下方全部命令中选最匹配的一项，并按 slots 定义从用户整句提取槽位（键名必须与 slots 完全一致）。",
+    '第一步先判断用户是否【明确想执行】下方某条命令。若是闲聊、提问、查询事实（如问时间/天气/新闻/为什么）、表达情绪、或与下方命令无关，一律输出 {"none":true}，不要勉强匹配、不要硬凑。',
+    "只有确实想执行某命令时，才从下方选最匹配的一项，并按 slots 定义从用户整句提取槽位（键名必须与 slots 完全一致）。把握不准就给较低 confidence 或直接 none。",
     domainBlock,
     "槽位提取原则：",
     "- 只填用户句中明确出现的信息；未提及的必填项省略该键",
@@ -154,7 +155,22 @@ async function classifyNluWithLlmOnce(
     }
     const body = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        prompt_cache_hit_tokens?: number;
+        prompt_cache_miss_tokens?: number;
+      };
     };
+    const u = body.usage;
+    if (u) {
+      nluLog.debug(
+        `NLU usage model=${cfg.model} prompt=${u.prompt_tokens ?? "?"}` +
+          ` (cache_hit=${u.prompt_cache_hit_tokens ?? 0} miss=${u.prompt_cache_miss_tokens ?? 0})` +
+          ` completion=${u.completion_tokens ?? "?"} total=${u.total_tokens ?? "?"}`,
+      );
+    }
     const content = body.choices?.[0]?.message?.content ?? "";
     const parsed = parseLlmJson(content);
     if (parsed.type === "intent" && parsed.intent.confidence < nluConfidenceMin()) {

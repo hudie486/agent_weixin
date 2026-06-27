@@ -23,6 +23,14 @@ export type AgentConfig = {
   args: string[];
   outputMode: "text" | "json";
   timeoutMs: number;
+  /** 运行后端：`cli`=spawn cursor-agent（默认）；`sdk`=@cursor/sdk 本进程内 local 模式 */
+  backend: "cli" | "sdk";
+  /** sdk 后端鉴权（CURSOR_API_KEY） */
+  apiKey?: string;
+  /** sdk 后端 local 模型（本地 agent 必填，如 composer-2.5） */
+  model?: string;
+  /** 续聊用的 agent/chat id（sdk: Agent.resume(id)；cli: --resume id） */
+  resumeChatId?: string;
 };
 
 export type AgentResult =
@@ -105,14 +113,26 @@ export function loadAgentConfig(): AgentConfig {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error(`AGENT_TIMEOUT_MS 无效`);
   }
-  return { cmd, invokeMode, args, outputMode, timeoutMs };
+  const backend = (process.env.AGENT_BACKEND?.trim()?.toLowerCase() || "cli") as AgentConfig["backend"];
+  if (backend !== "cli" && backend !== "sdk") {
+    throw new Error(`AGENT_BACKEND 仅支持 cli/sdk`);
+  }
+  const apiKey = process.env.CURSOR_API_KEY?.trim() || undefined;
+  const model = process.env.AGENT_MODEL?.trim() || undefined;
+  if (backend === "sdk") {
+    if (!apiKey) throw new Error(`AGENT_BACKEND=sdk 需要设置 CURSOR_API_KEY`);
+    if (!model) {
+      throw new Error(`AGENT_BACKEND=sdk 需要设置 AGENT_MODEL（本地 agent 必填，如 composer-2.5；可用 Cursor.models.list() 查询）`);
+    }
+  }
+  return { cmd, invokeMode, args, outputMode, timeoutMs, backend, apiKey, model };
 }
 
 export function withAgentResume(cfg: AgentConfig, chatId: string): AgentConfig {
   const id = (chatId ?? "").trim();
   if (!id) return cfg;
   const args = (cfg.args ?? []).filter((a) => !String(a).toLowerCase().startsWith("--resume"));
-  return { ...cfg, args: [...args, "--resume", id] };
+  return { ...cfg, args: [...args, "--resume", id], resumeChatId: id };
 }
 
 export function wrapSpawnCommand(cfg: AgentConfig, args: string[]): { command: string; finalArgs: string[] } {
@@ -145,7 +165,7 @@ function extractChatIdFromCreateChatOutput(raw: string): string | null {
   return t;
 }
 
-export async function createCursorChatId(params: { cfg: AgentConfig; cwd?: string }): Promise<string> {
+export async function cliCreateCursorChatId(params: { cfg: AgentConfig; cwd?: string }): Promise<string> {
   const cfg = params.cfg;
   const args = ["create-chat", "--print", "--output-format", "json"];
   const { command, finalArgs } = wrapSpawnCommand(cfg, args);

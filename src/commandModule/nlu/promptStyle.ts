@@ -6,6 +6,9 @@
  */
 import type { CommandParamDef } from "../../framework/commands/descriptor.js";
 import { loadNluLlmConfig } from "./config.js";
+import { createLogger } from "../../logger.js";
+
+const styleLog = createLogger("nlu-style");
 
 /** 仅 NLU 交互话术，不含命令结果 */
 export type NluStyleKind = "slot_prompt" | "disambiguate" | "error" | "cancel" | "clarify";
@@ -124,7 +127,22 @@ export async function styleNluDialogue(
     }
     const body = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        prompt_cache_hit_tokens?: number;
+        prompt_cache_miss_tokens?: number;
+      };
     };
+    const u = body.usage;
+    if (u) {
+      styleLog.debug(
+        `NLU polish usage model=${cfg.model} prompt=${u.prompt_tokens ?? "?"}` +
+          ` (cache_hit=${u.prompt_cache_hit_tokens ?? 0} miss=${u.prompt_cache_miss_tokens ?? 0})` +
+          ` completion=${u.completion_tokens ?? "?"} total=${u.total_tokens ?? "?"}`,
+      );
+    }
     const out = body.choices?.[0]?.message?.content?.trim();
     if (!out) return fallbackStyleNluDialogue(trimmed, kind, ctx);
     return out.replace(/^["'「]|["'」]$/g, "").trim();

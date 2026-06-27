@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { type AgentConfig, type AgentResult, buildAgentSpawnArgs } from "./config.js";
+import { findNextDelimiterIndex } from "./streamSegment.js";
 
 type StreamJsonEvent = {
   type?: string;
@@ -17,16 +18,6 @@ export function defaultAgentIdleTimeoutMs(): number {
   if (raw === "0" || raw?.toLowerCase() === "off") return Number.POSITIVE_INFINITY;
   const v = Number(raw);
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : 600_000;
-}
-
-function findNextDelimiterIndex(text: string, from: number): number {
-  const delims = ["。", "！", "？", "\n"];
-  let best = -1;
-  for (const d of delims) {
-    const i = text.indexOf(d, from);
-    if (i >= 0 && (best < 0 || i < best)) best = i;
-  }
-  return best;
 }
 
 export function extractJsonObjectsFromText(text: string): string[] {
@@ -112,7 +103,7 @@ export type StreamCallbacks = {
   onChunk: (text: string) => void | Promise<void>;
 };
 
-export async function runAgentStreaming(params: {
+export type RunAgentStreamingParams = {
   prompt: string;
   cfg: AgentConfig;
   /** 覆盖 AGENT_CWD；周期任务作业目录等场景使用 */
@@ -123,7 +114,9 @@ export async function runAgentStreaming(params: {
   maxWallMs?: number;
   segmentAfterChars?: number;
   progressMinIntervalMs?: number;
-}): Promise<AgentResult> {
+};
+
+export async function runAgentStreaming(params: RunAgentStreamingParams): Promise<AgentResult> {
   const startedAt = Date.now();
   const fullPrompt = appendWeChatHint(params.prompt);
   const { command, finalArgs, needsStdin } = buildAgentSpawnArgs(fullPrompt, params.cfg);

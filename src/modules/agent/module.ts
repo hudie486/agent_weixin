@@ -12,6 +12,9 @@ import {
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
 import { sanitizeWeChatAgentText } from "../../util/wxAgentReplySanitize.js";
 import { extractPeriodicProposal } from "../../handler/proposal.js";
+import { buildMemoryContext, extractAndStoreMemory } from "../../capabilities/memory/index.js";
+import { buildWebSearchContext } from "../../capabilities/websearch/index.js";
+import { formatShanghaiDateTimeSeconds } from "../../util/shanghaiTime.js";
 import type { FrameworkContext, ModuleCommand, ModuleHandler } from "../../framework/contracts/module.js";
 
 function wantsPeriodicHint(text: string): boolean {
@@ -36,10 +39,20 @@ export async function executeAgentConversation(ctx: FrameworkContext, text: stri
   }
 
   const sysParts = [baseChatSystemPrompt()];
+  sysParts.push(
+    `当前北京时间（Asia/Shanghai, UTC+8）：${formatShanghaiDateTimeSeconds(new Date())}。涉及"现在/今天/此刻几点"的问题以此为准。`,
+  );
   const userRoster = userDisplayNamesForAgent();
   if (userRoster) sysParts.push(userRoster);
   if (wantsPeriodicHint(text)) sysParts.push(periodicAgentInstruction());
+  const memoryContext = await buildMemoryContext(ctx.userId, text);
+  if (memoryContext) sysParts.push(memoryContext);
+  const webContext = await buildWebSearchContext(text);
+  if (webContext) sysParts.push(webContext);
   const promptForAgent = `${sysParts.join("\n\n")}\n\n用户：${text}`;
+
+  // 自动抽取用户记忆（默认关；fire-and-forget，不阻塞回复）
+  void extractAndStoreMemory(ctx.userId, text).catch(() => {});
 
   const replyTo = ctx.envelope ?? ctx.userId;
   let sawProgress = false;

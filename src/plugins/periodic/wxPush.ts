@@ -45,14 +45,14 @@ export async function pushPeriodicJobMessage(
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       errors.push(`${t.userId}: ${m}`);
-      log.warn(`periodic push failed job=${job.id} user=${t.userId}: ${m}`);
+      log.debug(`periodic push failed job=${job.id} user=${t.userId}: ${m}`);
     }
   }
   if (ok === 0 && errors.length) {
     throw new Error(errors.join("; "));
   }
   if (errors.length) {
-    log.warn(`periodic push partial job=${job.id} ok=${ok}/${targets.length} failed=${errors.join("; ")}`);
+    log.debug(`periodic push partial job=${job.id} ok=${ok}/${targets.length} failed=${errors.join("; ")}`);
   }
   return { status: "sent" };
 }

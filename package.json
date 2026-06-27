@@ -23,17 +23,26 @@
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/main.js",
+    "searxng:setup": "node scripts/setup-searxng.mjs",
+    "web:install": "npm --prefix web install",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
     "prepublishOnly": "npm run build",
     "test": "node --experimental-vm-modules node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {
+    "@cursor/sdk": "^1.0.20",
+    "@hono/node-server": "^1.19.14",
+    "@huggingface/transformers": "^4.2.0",
     "@wechatbot/wechatbot": "^2.1.1",
     "cron-parser": "^5.4.0",
     "dotenv": "^16.4.5",
+    "hono": "^4.12.27",
     "https-proxy-agent": "^7.0.6",
     "qq-guild-bot": "^2.9.5",
     "qrcode": "^1.5.4",
-    "undici": "^6.25.0"
+    "undici": "^6.25.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

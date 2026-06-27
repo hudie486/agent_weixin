@@ -110,14 +110,17 @@ export async function executePeriodicScriptJob(
             retryPerItem: 2,
             backoffMs: 1200,
           });
-          if (flushed.sent > 0 || flushed.failed > 0) {
+          if (flushed.sent > 0) {
             log.info(
               `retry-queue drained job=${job.id} user=${t.userId} sent=${flushed.sent} failed=${flushed.failed}`,
             );
+          } else if (flushed.failed > 0) {
+            // 仍发不出去（多为对端平台不可达）→ 静默重试，不刷终端
+            log.debug(`retry-queue drain job=${job.id} user=${t.userId} failed=${flushed.failed}`);
           }
         }
     } catch (e) {
-      log.warn(`drain retry queue failed: ${errText(e)}`);
+      log.debug(`drain retry queue failed: ${errText(e)}`);
     }
 
     const env = {
@@ -149,7 +152,7 @@ export async function executePeriodicScriptJob(
         await pushJobStdoutWithRetry(job, text, 3, 1200);
       } catch (e) {
         const em = errText(e);
-        log.warn(`notify stdout failed job=${job.id}: ${em}`);
+        log.debug(`notify stdout failed job=${job.id}: ${em}`);
         for (const t of listPeriodicNotifyTargets(job)) {
           enqueueRetryMessage({
             jobId: job.id,

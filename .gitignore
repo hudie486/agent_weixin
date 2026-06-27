@@ -2,4 +2,10 @@ node_modules/
 dist/
 data/
 .env
+.env.bak.*
 *.log
+# 本地 SearXNG（venv + 含 secret 的 settings 不入库）
+searxng/
+
+# Web 控制台数据备份
+data-backups/

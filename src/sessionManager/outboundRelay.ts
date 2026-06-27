@@ -55,15 +55,16 @@ export async function relayOutbound(
   const styled = deliver.styleOutbound(effective, generic);
   const source = opts?.source ?? "deliver";
   const previewText = styled.file?.caption ?? styled.text;
-  logSessionIoOutbound(effective.platform, effective.instanceId, source, userId, previewText);
 
   try {
     await withNetworkRetry(() => deliver.sendOutbound(effective, styled, opts), {
       onRetry: (attempt, max, err) => {
         const m = err instanceof Error ? err.message : String(err);
-        log.warn(`出站重试 ${attempt}/${max - 1} (${source}) user=${userId}: ${m}`);
+        log.debug(`出站重试 ${attempt}/${max - 1} (${source}) user=${userId}: ${m}`);
       },
     });
+    // 发送成功后再打印收发轨迹：失败的重试不再反复刷整段正文
+    logSessionIoOutbound(effective.platform, effective.instanceId, source, userId, previewText);
   } catch (e) {
     if (!opts?.skipQueueOnFailure && shouldEnqueueAfterSendError(e)) {
       enqueueOutboundMessage({
@@ -77,9 +78,9 @@ export async function relayOutbound(
         lastError: e instanceof Error ? e.message : String(e),
       });
       if (isWechatOutboundBlockedError(e) || isWxSendBlockedError(e)) {
-        log.warn(`出站入队 ${source} user=${userId}: ${wxSendErrorSummary(e)}`);
+        log.debug(`出站入队 ${source} user=${userId}: ${wxSendErrorSummary(e)}`);
       } else {
-        log.warn(`出站入队 ${source} user=${userId}: network`);
+        log.debug(`出站入队 ${source} user=${userId}: network`);
       }
       return;
     }

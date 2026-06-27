@@ -68,7 +68,7 @@ export function readInjectedEnv(): Record<string, string> {
   return readInjectedEnvForUser(LEGACY_USER);
 }
 
-function readInjectedEnvDirect(userId: string): Record<string, string> {
+export function readInjectedEnvDirect(userId: string): Record<string, string> {
   const uid = userId.trim();
   if (!uid) return {};
   const st = readStateRaw();
