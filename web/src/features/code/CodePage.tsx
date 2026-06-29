@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Code2, Star, Trash2, RefreshCw, HardDrive, Server, GitBranch, SlidersHorizontal } from "lucide-react";
+import { Code2, Star, Trash2, RefreshCw, HardDrive, Server, GitBranch, SlidersHorizontal, Hammer, Wrench, Play } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { MotionGlassCard, GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
-import { Skeleton, EmptyState, Badge } from "@/components/ui/atoms";
+import { Skeleton, EmptyState, Badge, inputClass } from "@/components/ui/atoms";
+import { Sheet } from "@/components/ui/Overlay";
+import { RunTerminal } from "@/components/RunTerminal";
+import { cn } from "@/lib/cn";
 
 type Project = {
   id: string;
@@ -31,6 +35,7 @@ export function CodePage() {
     queryKey: ["code"],
     queryFn: () => api.get<{ projects: Project[] }>("/code/projects"),
   });
+  const [run, setRun] = useState<{ project: Project; mode: "compile" | "fix" } | null>(null);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["code"] });
 
@@ -107,7 +112,17 @@ export function CodePage() {
                   </div>
                   <div className="text-[10px] text-muted/60">归属 {p.userId.slice(0, 22)}</div>
                 </div>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
+                  {p.hasBuildScript && (
+                    <Button size="sm" variant="primary" onClick={() => setRun({ project: p, mode: "compile" })}>
+                      <Hammer className="size-3.5" /> 编译
+                    </Button>
+                  )}
+                  {p.kind === "local" && (
+                    <Button size="sm" onClick={() => setRun({ project: p, mode: "fix" })}>
+                      <Wrench className="size-3.5" /> 修复
+                    </Button>
+                  )}
                   {!p.isDefault && (
                     <Button size="sm" variant="subtle" onClick={() => setDefault(p)}>
                       <Star className="size-3.5" /> 设默认
@@ -124,9 +139,62 @@ export function CodePage() {
       )}
 
       <GlassCard className="p-5 text-[12px] leading-relaxed text-muted">
-        构建 / 修复（build.sh、SSH 远端编译、Agent 修复）将在后续接入网页端流式日志；当前可在微信用
+        <b className="text-fg">编译</b>：运行项目根 <span className="font-mono">build.sh</span>（本地或 SSH 远端），网页实时看输出与产物路径。
+        <b className="text-fg"> 修复</b>：让 Agent 在本地项目内按你的说明改代码（仅本地项目）。也可在微信用
         <span className="font-mono"> /代码 编译 / 修复 </span>触发。
       </GlassCard>
+
+      <Sheet
+        open={!!run}
+        onClose={() => setRun(null)}
+        title={`${run?.mode === "fix" ? "修复" : "编译"} · ${run?.project.alias ?? ""}`}
+        width={680}
+      >
+        {run && (run.mode === "compile" ? <CompilePanel project={run.project} /> : <FixPanel project={run.project} />)}
+      </Sheet>
+    </div>
+  );
+}
+
+function CompilePanel({ project }: { project: Project }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-muted">
+        执行 <span className="font-mono">bash ./build.sh</span>
+        {project.kind === "ssh" ? "（SSH 远端）" : `（${project.localPath}）`}，实时输出。
+      </p>
+      <RunTerminal path={`/sse/code-compile/${project.id}`} />
+    </div>
+  );
+}
+
+function FixPanel({ project }: { project: Project }) {
+  const [instruction, setInstruction] = useState("");
+  const [runId, setRunId] = useState(0);
+  const [active, setActive] = useState(false);
+  const start = () => {
+    if (!instruction.trim()) return;
+    setActive(true);
+    setRunId(Date.now());
+  };
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] text-muted">
+        让 Agent 在 <span className="font-mono">{project.localPath}</span> 内按说明改代码（会真实修改文件、消耗模型额度）。
+      </p>
+      <div className="flex gap-2">
+        <input
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && start()}
+          placeholder="例如：修复登录页的空指针；把按钮改成蓝色"
+          className={cn(inputClass, "flex-1")}
+        />
+        <Button variant="primary" onClick={start} disabled={!instruction.trim()}>
+          <Play className="size-4" /> 开始修复
+        </Button>
+      </div>
+      {active && <RunTerminal key={runId} path={`/sse/code-fix/${project.id}?q=${encodeURIComponent(instruction)}`} />}
     </div>
   );
 }

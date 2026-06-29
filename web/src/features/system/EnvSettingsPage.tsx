@@ -149,6 +149,17 @@ function FieldRow({
         </div>
         <div className="font-mono text-[10px] text-muted/70">{field.key}</div>
         {field.description && <div className="mt-0.5 text-[11px] text-muted">{field.description}</div>}
+        {field.differs && (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-md border border-[var(--warn)]/30 bg-[var(--warn)]/8 px-1.5 py-1 text-[10px]">
+            <span className="text-[var(--warn)]">运行中</span>
+            <span className="font-mono text-fg">{field.effectiveSet ? field.effective || "(空)" : "(未设置)"}</span>
+            <span className="text-muted">
+              {!field.set
+                ? "来自进程环境（如 QQ 运行时注入 / shell），不在 .env"
+                : "与 .env 不一致：改了未重启，或被进程环境覆盖"}
+            </span>
+          </div>
+        )}
       </div>
       <FieldControl
         field={field}

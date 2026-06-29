@@ -61,6 +61,9 @@ export type EnvFieldView = {
   set: boolean;
   value: string;
   masked: boolean;
+  effective: string;
+  effectiveSet: boolean;
+  differs: boolean;
 };
 
 export type EnvCategoryView = {

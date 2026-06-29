@@ -100,9 +100,14 @@ function maskSecret(v: string): string {
 
 export type EnvFieldView = EnvFieldMeta & {
   set: boolean;
-  /** 非密钥：原值；密钥：脱敏串 */
+  /** .env 文件中的值（非密钥：原值；密钥：脱敏串） */
   value: string;
   masked: boolean;
+  /** 当前进程实际生效的值（process.env，含运行时注入/ shell 环境；密钥脱敏） */
+  effective: string;
+  effectiveSet: boolean;
+  /** 运行中的有效值与 .env 文件值是否不一致（如 QQ 配置在运行时注入、或改了 .env 未重启） */
+  differs: boolean;
 };
 
 export type EnvCategoryView = {
@@ -135,7 +140,18 @@ export function getEnvConfigView(): EnvConfigView {
     const set = Object.prototype.hasOwnProperty.call(fileValues, meta.key);
     const raw = set ? fileValues[meta.key]! : "";
     const masked = meta.secret === true || meta.type === "secret";
-    return { ...meta, set, masked, value: masked && raw ? maskSecret(raw) : raw };
+    const envVal = process.env[meta.key];
+    const effectiveSet = envVal !== undefined;
+    const effRaw = envVal ?? "";
+    return {
+      ...meta,
+      set,
+      masked,
+      value: masked && raw ? maskSecret(raw) : raw,
+      effective: masked && effRaw ? maskSecret(effRaw) : effRaw,
+      effectiveSet,
+      differs: raw.trim() !== effRaw.trim(),
+    };
   };
 
   for (const meta of ENV_FIELDS) ensure(meta.category).push(toView(meta));
@@ -144,6 +160,9 @@ export function getEnvConfigView(): EnvConfigView {
   for (const key of Object.keys(fileValues)) {
     if (getEnvFieldMeta(key)) continue;
     const secret = isSecretKey(key);
+    const raw = fileValues[key]!;
+    const envVal = process.env[key];
+    const effRaw = envVal ?? "";
     ensure("other").push({
       key,
       category: "other",
@@ -153,7 +172,10 @@ export function getEnvConfigView(): EnvConfigView {
       secret,
       set: true,
       masked: secret,
-      value: secret ? maskSecret(fileValues[key]!) : fileValues[key]!,
+      value: secret ? maskSecret(raw) : raw,
+      effective: secret && effRaw ? maskSecret(effRaw) : effRaw,
+      effectiveSet: envVal !== undefined,
+      differs: raw.trim() !== effRaw.trim(),
     });
   }
 

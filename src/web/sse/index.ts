@@ -6,6 +6,7 @@ import { streamRunJob } from "../../core/periodicAdmin.js";
 import { getWebContext } from "../context.js";
 import { loadAgentConfig, runAgentStreaming } from "../../agent/index.js";
 import { recentLogs, subscribeLogs } from "../logCapture.js";
+import { streamCompile, streamFix } from "../../core/codeAdmin.js";
 
 export const sseRoutes = new Hono();
 
@@ -75,6 +76,34 @@ sseRoutes.get("/periodic-run/:id", (c) => {
     await streamRunJob(id, (chunk) => {
       void stream.writeSSE({ data: JSON.stringify(chunk) });
     });
+    await stream.writeSSE({ event: "done", data: "1" });
+  });
+});
+
+// 代码项目构建：连接即执行 build.sh，实时流式。
+sseRoutes.get("/code-compile/:id", (c) => {
+  const id = c.req.param("id");
+  return streamSSE(c, async (stream) => {
+    await streamCompile(id, (chunk) => {
+      void stream.writeSSE({ data: JSON.stringify(chunk) });
+    });
+    await stream.writeSSE({ event: "done", data: "1" });
+  });
+});
+
+// 代码项目修复：?q=<修复说明>，Agent 在本地项目内改代码，进度实时流式。
+sseRoutes.get("/code-fix/:id", (c) => {
+  const id = c.req.param("id");
+  const instruction = (c.req.query("q") ?? "").slice(0, 2000);
+  return streamSSE(c, async (stream) => {
+    await streamFix(
+      id,
+      instruction,
+      (chunk) => {
+        void stream.writeSSE({ data: JSON.stringify(chunk) });
+      },
+      getWebContext()?.agentCfg,
+    );
     await stream.writeSSE({ event: "done", data: "1" });
   });
 });
