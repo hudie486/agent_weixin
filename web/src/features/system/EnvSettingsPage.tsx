@@ -28,12 +28,22 @@ function FieldControl({
   onChange: (v: string) => void;
   onToggleSecret: () => void;
 }) {
-  const current = draftValue ?? field.value;
+  // 显示「真实生效值」：.env 文件值优先；未设则用进程环境实际值；再退到代码默认值。
+  // （密钥不做此回填，避免把脱敏串塞进可编辑框）
+  const resolved =
+    field.type === "secret"
+      ? field.value
+      : field.set
+        ? field.value
+        : field.effectiveSet
+          ? field.effective
+          : field.def ?? "";
+  const current = draftValue ?? resolved;
   const inputCls =
     "h-9 w-full rounded-lg border border-[var(--glass-border)] bg-white/5 px-3 text-[13px] outline-none focus:ring-2 focus:ring-[var(--accent)]/40";
 
   if (field.type === "bool") {
-    const on = isTrue(draftValue ?? field.value);
+    const on = isTrue(current);
     return (
       <button
         type="button"

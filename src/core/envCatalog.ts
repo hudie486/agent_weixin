@@ -26,6 +26,8 @@ export type EnvFieldMeta = {
   options?: string[];
   placeholder?: string;
   description?: string;
+  /** 代码内置默认值（未在 .env/进程环境显式设置时实际生效的值），用于页面如实显示「运行中」状态 */
+  def?: string;
 };
 
 export type EnvCategoryMeta = {
@@ -72,11 +74,11 @@ export const ENV_FIELDS: EnvFieldMeta[] = [
   F({ key: "AGENT_OUTPUT_MODE", category: "intelligence.agent", label: "输出模式", effect: "restart", type: "string" }),
   F({ key: "AGENT_FORCE_STREAM_JSON", category: "intelligence.agent", label: "强制 stream-json", effect: "restart", type: "bool" }),
   F({ key: "AGENT_NO_AUTO_PRINT_FLAG", category: "intelligence.agent", label: "禁用自动 --print", effect: "restart", type: "bool" }),
-  F({ key: "CHAT_SESSION_ENABLE", category: "intelligence.agent", label: "会话续聊 (--resume)", effect: "restart", type: "bool" }),
+  F({ key: "CHAT_SESSION_ENABLE", category: "intelligence.agent", label: "会话续聊 (--resume)", effect: "restart", type: "bool", def: "1" }),
   F({ key: "SESSION_STORE_PATH", category: "intelligence.agent", label: "会话存储路径", effect: "restart", type: "string" }),
 
   // ── 微信 ──
-  F({ key: "WECHAT_ENABLED", category: "platform.wechat", label: "启用微信", effect: "restart", type: "bool", description: "0=不扫码不登录，仅运行其它平台" }),
+  F({ key: "WECHAT_ENABLED", category: "platform.wechat", label: "启用微信", effect: "restart", type: "bool", def: "1", description: "0=不扫码不登录，仅运行其它平台" }),
   F({ key: "WECHATBOT_STORAGE_DIR", category: "platform.wechat", label: "微信存储目录", effect: "restart", type: "string" }),
   F({ key: "WECHATBOT_LOG_LEVEL", category: "platform.wechat", label: "SDK 日志级别", effect: "restart", type: "enum", options: ["debug", "info", "warn", "error"] }),
   F({ key: "WECHATBOT_BASE_URL", category: "platform.wechat", label: "iLink API 根地址", effect: "restart", type: "url" }),
@@ -109,8 +111,8 @@ export const ENV_FIELDS: EnvFieldMeta[] = [
   F({ key: "OUTBOUND_DELIVER_RETRY_MS", category: "platform.outbound", label: "投递重试间隔 ms", effect: "restart", type: "int" }),
 
   // ── NLU ──
-  F({ key: "NLU_ENABLE", category: "intelligence.nlu", label: "启用 NLU", effect: "restart", type: "bool" }),
-  F({ key: "NLU_AGENT_FALLBACK_ON_MISS", category: "intelligence.nlu", label: "未命中回退 Agent", effect: "restart", type: "bool" }),
+  F({ key: "NLU_ENABLE", category: "intelligence.nlu", label: "启用 NLU", effect: "restart", type: "bool", def: "1" }),
+  F({ key: "NLU_AGENT_FALLBACK_ON_MISS", category: "intelligence.nlu", label: "未命中回退 Agent", effect: "restart", type: "bool", def: "1" }),
   F({ key: "NLU_STYLE_ENABLE", category: "intelligence.nlu", label: "润色填参话术", effect: "restart", type: "bool" }),
   F({ key: "DEEPSEEK_API_KEY", category: "intelligence.nlu", label: "DeepSeek API Key", effect: "restart", type: "secret", secret: true }),
   F({ key: "NLU_LLM_BASE_URL", category: "intelligence.nlu", label: "Base URL", effect: "restart", type: "url" }),
@@ -123,7 +125,7 @@ export const ENV_FIELDS: EnvFieldMeta[] = [
 
   // ── 别名 ──
   F({ key: "ALIAS_STORE_PATH", category: "intelligence.alias", label: "别名表路径", effect: "restart", type: "string" }),
-  F({ key: "ALIAS_SUGGEST_ENABLE", category: "intelligence.alias", label: "auto-suggest", effect: "restart", type: "bool" }),
+  F({ key: "ALIAS_SUGGEST_ENABLE", category: "intelligence.alias", label: "auto-suggest", effect: "restart", type: "bool", def: "1" }),
 
   // ── 记忆与向量 ──
   F({ key: "VECTOR_ENABLE", category: "intelligence.memory", label: "启用向量", effect: "restart", type: "bool" }),
@@ -190,7 +192,7 @@ export const ENV_FIELDS: EnvFieldMeta[] = [
   F({ key: "WIZARD_TTL_MS", category: "system.data", label: "向导 TTL ms", effect: "restart", type: "int" }),
 
   // ── 日志与调试 ──
-  F({ key: "LOG_LEVEL", category: "system.logs", label: "日志级别", effect: "restart", type: "enum", options: ["debug", "info", "warn", "error"] }),
+  F({ key: "LOG_LEVEL", category: "system.logs", label: "日志级别", effect: "restart", type: "enum", options: ["debug", "info", "warn", "error"], def: "info" }),
   F({ key: "SESSION_IO", category: "system.logs", label: "收发调试日志", effect: "restart", type: "bool" }),
   F({ key: "WECHAT_TRACE_IO", category: "system.logs", label: "微信 trace", effect: "restart", type: "bool" }),
   F({ key: "WECHAT_TERMINAL_IO", category: "system.logs", label: "终端打印收发", effect: "restart", type: "bool" }),
@@ -203,7 +205,7 @@ export const ENV_FIELDS: EnvFieldMeta[] = [
   F({ key: "NODE_USE_ENV_PROXY", category: "system.proxy", label: "NODE_USE_ENV_PROXY", effect: "restart", type: "bool" }),
 
   // ── Web 控制台 ──
-  F({ key: "WEB_CONSOLE_ENABLE", category: "system.web", label: "启用 Web 控制台", effect: "restart", type: "bool" }),
+  F({ key: "WEB_CONSOLE_ENABLE", category: "system.web", label: "启用 Web 控制台", effect: "restart", type: "bool", def: "1" }),
   F({ key: "WEB_BIND", category: "system.web", label: "监听地址", effect: "restart", type: "string", description: "127.0.0.1=仅本机；0.0.0.0=局域网可访问" }),
   F({ key: "WEB_PORT", category: "system.web", label: "端口", effect: "restart", type: "int", placeholder: "8787" }),
 ];

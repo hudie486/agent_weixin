@@ -22,6 +22,7 @@ type Project = {
   branch: string | null;
   hasBuildScript: boolean;
   artifactGlob: string | null;
+  artifactSendName: string | null;
   isDefault: boolean;
   createdAt: number;
 };
@@ -118,11 +119,9 @@ export function CodePage() {
                       <Hammer className="size-3.5" /> 编译
                     </Button>
                   )}
-                  {p.kind === "local" && (
-                    <Button size="sm" onClick={() => setRun({ project: p, mode: "fix" })}>
-                      <Wrench className="size-3.5" /> 修复
-                    </Button>
-                  )}
+                  <Button size="sm" onClick={() => setRun({ project: p, mode: "fix" })}>
+                    <Wrench className="size-3.5" /> 修复
+                  </Button>
                   {!p.isDefault && (
                     <Button size="sm" variant="subtle" onClick={() => setDefault(p)}>
                       <Star className="size-3.5" /> 设默认
@@ -157,13 +156,72 @@ export function CodePage() {
 }
 
 function CompilePanel({ project }: { project: Project }) {
+  const [glob, setGlob] = useState(project.artifactGlob ?? "");
+  const [savingGlob, setSavingGlob] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const saveGlob = async () => {
+    setSavingGlob(true);
+    try {
+      await api.patch(`/code/projects/${project.id}`, { artifactGlob: glob.trim() || null });
+      toast.success("已保存产物 glob");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "保存失败");
+    } finally {
+      setSavingGlob(false);
+    }
+  };
+
+  const download = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/code/projects/${project.id}/artifact`, { credentials: "include" });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(j.error || `下载失败 (${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") || "";
+      const m = cd.match(/filename="?([^"]+)"?/);
+      const name = m ? decodeURIComponent(m[1]) : "artifact.bin";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("下载失败");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <p className="text-[11px] text-muted">
         执行 <span className="font-mono">bash ./build.sh</span>
         {project.kind === "ssh" ? "（SSH 远端）" : `（${project.localPath}）`}，实时输出。
       </p>
+      <div className="space-y-1">
+        <div className="text-[11px] text-muted">产物 glob（相对工程根，决定从哪取产物；空则用 CODE_ARTIFACT_GLOB）</div>
+        <div className="flex gap-2">
+          <input value={glob} onChange={(e) => setGlob(e.target.value)} placeholder="dist/*.exe" className={cn(inputClass, "flex-1 font-mono")} />
+          <Button size="sm" loading={savingGlob} onClick={saveGlob}>保存</Button>
+          {project.kind === "local" && (
+            <Button size="sm" variant="primary" loading={downloading} onClick={download}>
+              下载产物
+            </Button>
+          )}
+        </div>
+      </div>
       <RunTerminal path={`/sse/code-compile/${project.id}`} />
+      <p className="text-[10px] text-muted/70">
+        构建成功后若仍「未找到产物」：多半是 glob 没指对，或 build.sh 没产出文件。SSH 远端产物暂不支持网页直接下载。
+      </p>
     </div>
   );
 }
@@ -172,6 +230,15 @@ function FixPanel({ project }: { project: Project }) {
   const [instruction, setInstruction] = useState("");
   const [runId, setRunId] = useState(0);
   const [active, setActive] = useState(false);
+
+  if (project.kind !== "local" || !project.localPath) {
+    return (
+      <div className="rounded-lg border border-[var(--warn)]/30 bg-[var(--warn)]/8 p-4 text-[13px]">
+        修复需要 Agent 直接读写项目文件，<b>仅支持本地项目</b>（当前为 {project.kind}）。
+        SSH / clone 项目请在本机登记一份本地副本后再用修复。
+      </div>
+    );
+  }
   const start = () => {
     if (!instruction.trim()) return;
     setActive(true);

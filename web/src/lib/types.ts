@@ -58,6 +58,7 @@ export type EnvFieldView = {
   options?: string[];
   placeholder?: string;
   description?: string;
+  def?: string;
   set: boolean;
   value: string;
   masked: boolean;
