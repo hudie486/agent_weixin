@@ -1,8 +1,8 @@
 import fs from "node:fs";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { GenerationStatus, PeriodicJob, PeriodicStateFile } from "./types.js";
 import { stripIllFormedUtf16 } from "../../util/unicode.js";
+import { writeJsonAtomic, cleanStaleTmp } from "../../util/atomicJson.js";
 import { cronTzName, migrateScheduleJobCron, nextCronRunMs } from "./cron.js";
 import { dataPaths } from "../../config/paths.js";
 import { SCRIPT_ENTRY, safeRemoveJobWorkspace } from "./paths.js";
@@ -65,17 +65,15 @@ function deepSanitize(obj: unknown): unknown {
 }
 
 function loadStateRaw(p: string): PeriodicStateFile {
+  cleanStaleTmp(p);
   if (!fs.existsSync(p)) return { version: 1, jobs: [] };
   const raw = fs.readFileSync(p, "utf-8");
   return JSON.parse(raw) as PeriodicStateFile;
 }
 
 function saveAtomic(p: string, data: PeriodicStateFile): void {
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  const tmp = `${p}.${process.pid}.tmp`;
   const sanitized = deepSanitize(data) as PeriodicStateFile;
-  fs.writeFileSync(tmp, JSON.stringify(sanitized, null, 2), "utf-8");
-  fs.renameSync(tmp, p);
+  writeJsonAtomic(p, sanitized);
 }
 
 function loadState(): PeriodicStateFile {

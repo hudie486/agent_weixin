@@ -33,6 +33,8 @@ export const dataPaths = {
     process.env.QQ_SESSION_STORE_PATH?.trim() || underData(`sessions.${instanceId}.json`),
   codeProjects: (): string =>
     process.env.CODE_PROJECTS_PATH?.trim() || underData("code-projects.json"),
+  aliases: (): string =>
+    process.env.ALIAS_STORE_PATH?.trim() || underData("aliases.json"),
   codeArtifactsTmp: (): string => underData("code-artifacts-tmp"),
   resourceAudience: (): string =>
     process.env.RESOURCE_AUDIENCE_PATH?.trim() || underData("resource-audience.json"),

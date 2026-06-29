@@ -1,13 +1,27 @@
 /** 可重试的网络类错误（fetch failed、DNS、连接重置、部分 5xx/429） */
 export function isRetryableNetworkError(e: unknown): boolean {
+  // 采集错误链上的 name + message。注意 undici 超时是 DOMException（非 Error 实例），
+  // 需兼容非 Error 但带 name/message 的对象，否则会被漏判为「不可重试」。
   const chain: string[] = [];
   let cur: unknown = e;
-  for (let i = 0; i < 8 && cur instanceof Error; i++) {
-    chain.push(cur.message);
-    cur = cur.cause;
+  for (let i = 0; i < 8 && cur != null; i++) {
+    if (cur instanceof Error) {
+      chain.push(`${cur.name}: ${cur.message}`);
+      cur = cur.cause;
+    } else if (typeof cur === "object" && ("message" in cur || "name" in cur)) {
+      const o = cur as { name?: unknown; message?: unknown; cause?: unknown };
+      chain.push(`${String(o.name ?? "")}: ${String(o.message ?? "")}`);
+      cur = o.cause;
+    } else {
+      chain.push(String(cur));
+      break;
+    }
   }
   const blob = chain.join(" ");
   if (/\b(ECONNRESET|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|fetch failed)\b/i.test(blob)) {
+    return true;
+  }
+  if (/(TimeoutError|AbortError|operation was aborted|aborted due to timeout|UND_ERR_[A-Z_]*TIMEOUT|UND_ERR_ABORTED)/i.test(blob)) {
     return true;
   }
   if (/QQ API .*: (429|5\d\d) /i.test(blob)) return true;

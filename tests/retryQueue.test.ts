@@ -73,4 +73,59 @@ describe("periodic retry queue", () => {
     expect(raw.items.length).toBe(1);
     expect(raw.items[0]?.attempts).toBe(1);
   });
+
+  it("caps to newest 10 per user and drops the oldest", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "periodic-retry-"));
+    const p = path.join(dir, "queue.json");
+    process.env.PERIODIC_RETRY_QUEUE_PATH = p;
+
+    for (let i = 0; i < 15; i++) {
+      enqueueRetryMessage({
+        jobId: "job",
+        userId: "cap",
+        text: `m${i}`,
+        lastError: "x",
+        plain: true,
+        intent: "info",
+      });
+    }
+
+    const raw = JSON.parse(fs.readFileSync(p, "utf-8")) as {
+      items: Array<{ payload: { text: string } }>;
+    };
+    expect(raw.items.length).toBe(10);
+    expect(raw.items[0]?.payload.text).toBe("m5");
+    expect(raw.items[9]?.payload.text).toBe("m14");
+  });
+
+  it("evicts items once they pass max attempts", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "periodic-retry-"));
+    const p = path.join(dir, "queue.json");
+    process.env.PERIODIC_RETRY_QUEUE_PATH = p;
+    process.env.OUTBOUND_QUEUE_MAX_ATTEMPTS = "2";
+    try {
+      enqueueRetryMessage({
+        jobId: "job",
+        userId: "ev",
+        text: "x",
+        lastError: "fetch failed",
+        plain: true,
+        intent: "info",
+      });
+      const failNotify = mkNotify(async () => {
+        throw new Error("fetch failed");
+      });
+
+      await drainRetryMessagesForUser({ userId: "ev", notify: failNotify });
+      let raw = JSON.parse(fs.readFileSync(p, "utf-8")) as { items: Array<{ attempts: number }> };
+      expect(raw.items.length).toBe(1);
+      expect(raw.items[0]?.attempts).toBe(1);
+
+      await drainRetryMessagesForUser({ userId: "ev", notify: failNotify });
+      raw = JSON.parse(fs.readFileSync(p, "utf-8")) as { items: Array<{ attempts: number }> };
+      expect(raw.items.length).toBe(0);
+    } finally {
+      delete process.env.OUTBOUND_QUEUE_MAX_ATTEMPTS;
+    }
+  });
 });
