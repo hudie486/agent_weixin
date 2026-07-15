@@ -4,8 +4,10 @@ import path from "node:path";
 
 const SRC_DIR = path.resolve("src");
 const MODULES_DIR = path.join(SRC_DIR, "modules");
+// 分层基线：catalog（命令定义）+ keywords（动作/关键词）+ service（业务执行）。
+// 向导由 CommandCatalog 动态生成，不再要求每域一个 wizard.ts；qq 域的平台适配在 platforms/qq。
 const GUARDED_DOMAINS = ["periodic", "code", "env", "user", "qq"] as const;
-const REQUIRED_FILES = ["keywords.ts", "commands.ts", "service.ts", "wizard.ts", "module.ts"] as const;
+const REQUIRED_FILES = ["keywords.ts", "catalog.ts", "service.ts"] as const;
 
 function listTsFiles(dir: string): string[] {
   const out: string[] = [];

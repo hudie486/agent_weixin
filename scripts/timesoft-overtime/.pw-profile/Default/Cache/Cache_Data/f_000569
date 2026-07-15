@@ -1,0 +1,2439 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link type="text/css" rel="styleSheet" href="/mga/sps/static/dtb/css/normalize.css" />
+    <link type="text/css" rel="styeSheet" href="/mga/sps/static/dtb/css/iconfont/iconfont.css" />
+    <link rel="stylesheet" href="/mga/sps/static/dtb/css/message.css">
+    <link type="text/css" rel="styleSheet" href="/mga/sps/static/dtb/css/normalize.css" />
+    <link type="text/css" rel="styeSheet" href="/mga/sps/static/dtb/css/iconfont/iconfont.css" />
+    <script type="" src="/mga/sps/static/dtb/js/jquery-1.12.4.min.js"></script>
+    <script type="" src="/mga/sps/static/dtb/js/jquery.i18n.properties.js"></script>
+    <script type="" src="/mga/sps/static/dtb/js/wwLogin.js"></script>
+    <script type="" src="/mga/sps/static/dtb/js/jquery.validate-1.12.0.js"></script>
+    <script type="" src="/mga/sps/static/dtb/js/message.min.js"></script>
+    <script type="" src="/mga/sps/static/dtb/js/awsc.js"></script>
+    <script type="" src="/mga/sps/static/dtb/js/en.js"></script>
+    <script type="" src="/mga/sps/static/dtb/js/zh.js"></script>
+    <script type="" src="/mga/sps/static/dtb/js/AliyunCaptcha.js"></script>
+    <script type="" src="/mga/sps/static/dtb/js/ddLogin.js"></script>
+    <!--script src="https://g.alicdn.com/dingding/h5-dingtalk-login/0.21.0/ddlogin.js"></script-->
+    <style>
+        body {
+            font-family: "Microsoft YaHei", "Heiti SC", tahoma, arial, "Hiragino Sans GB", "\5B8B\4F53", sans-serif;
+            background: #f3f2f7;
+            font-size: .875rem;
+            margin: 0;
+            background-image: url("/mga/sps/static/dtb/images/iam-login-bg.png");
+            background-size: cover;
+            background-position: center;
+        }
+
+        .btnSliderDiv {
+            margin-top: 1rem;
+        }
+
+
+        input.error {
+            border: .0625rem solid red !important;
+        }
+
+        p {
+            margin: 0;
+        }
+
+        .login-container {
+            max-width: 50rem;
+        }
+
+        /* .logo {
+          text-align: center;
+        } */
+
+        /* szq add 0809  */
+        .logo {
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo img {
+            display: inline-block;
+            width: 6rem;
+            height: auto;
+        }
+
+        .logo .title {
+            font-size: 1.375rem;
+            /* font-weight: 600; */
+            text-align: center;
+            color: #fff;
+            padding-left: 1rem;
+            margin-left: 1rem;
+            position: relative;
+        }
+
+        /* szq add end 0809  */
+
+        .title {
+            font-size: 1.75rem;
+            font-weight: 600;
+            text-align: center;
+            margin-top: 1.25rem;
+        }
+
+        .login-wrapper {
+            background-color: #FFF;
+            border-radius: 1.5rem;
+            padding: 1.0625rem 0;
+            margin-top: 1.25rem;
+            font-size: .8125rem;
+            position: relative;
+        }
+
+        .login-header {
+            text-align: right;
+            padding: .625rem .9375rem;
+            width: 100%;
+            position: fixed;
+            z-index: 9;
+            box-sizing: border-box;
+        }
+
+        .language-wrapper {
+            position: relative;
+            color: #FFFFFF;
+            display: inline-block;
+            padding: .375rem 1.5rem .375rem .625rem;
+            cursor: pointer;
+            font-size: .8125rem;
+            border-radius: .375rem;
+            border: .0625rem solid rgba(222, 222, 222, 1);
+        }
+
+        .language-selector {
+            text-align: left;
+            color: #333;
+            position: absolute;
+            top: 2.5rem;
+            left: 0;
+            right: 0;
+            min-width: 4.375rem;
+            padding: .3125rem .625rem;
+            box-shadow: 0 .25rem .5rem 0 rgba(0, 0, 0, 0.2), 0 .375rem 1.25rem 0 rgba(0, 0, 0, 0.19);
+            border-radius: .375rem;
+            z-index: 99;
+            background-color: #FFF;
+            margin: 0;
+            display: none;
+        }
+
+        .language-selector li {
+            list-style: none;
+            line-height: 1.875rem;
+        }
+
+        .language-selector li+li {
+            border-top: .0625rem solid #DEDEDE;
+        }
+
+        .language-icon {
+            width: 1rem;
+            height: 1rem;
+            text-align: center;
+            padding: .125rem;
+            border-radius: 50%;
+            background-color: #333;
+            font-size: .75rem;
+            color: #fff;
+            margin-right: .3125rem;
+            line-height: 1rem;
+            display: inline-block;
+            transform: scale(0.7);
+        }
+
+        .language-selector-icon {
+            position: absolute;
+            top: .8125rem;
+            right: .4375rem;
+            width: 0rem;
+            height: 0rem;
+            border: .3125rem solid transparent;
+            border-top-color: #fff;
+        }
+
+        .login-content {}
+
+        .login-first-in {
+            display: flex;
+        }
+
+        .qywx-login {
+            padding: 0 1.875rem;
+            border-right: .0625rem solid #dedede;
+            text-align: center;
+        }
+
+        .qywx-title {
+            padding: .4375rem 0;
+            font-size: 1.125rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .qywx-desc {
+            color: #666;
+            margin-top: 1.25rem;
+            text-align: center;
+        }
+
+        .qywx-desc span {
+            display: inline-block;
+            width: 12.5rem;
+        }
+
+        .qywx-qrcode-box {
+            position: relative;
+            width: 8.75rem;
+            height: 8.75rem;
+            padding: .625rem !important;
+            border: .0625rem solid #dedede;
+            margin: 0;
+            margin: 1.875rem auto 0;
+        }
+
+        .qywx-qrcode {
+            width: 8.75rem;
+            height: 8.75rem;
+            display: inline-block;
+            position: relative;
+            z-index: 9;
+            overflow: hidden;
+        }
+
+        .qywx-qrcode iframe {
+            width: 8.75rem !important;
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 1;
+        }
+
+        .qywx-note {
+            color: #ff9500;
+            line-height: 1.5rem;
+            border: .0625rem solid #ff9500;
+            background-color: #fff7ec;
+            border-radius: .75rem;
+            padding: 0 .9375rem;
+            display: inline-block;
+            margin-top: 2.625rem;
+            margin-bottom: 2.8125rem;
+        }
+
+        .dd-login {
+            padding: 0 1.875rem;
+            border-right: .0625rem solid #dedede;
+            text-align: center;
+        }
+
+        .dd-title {
+            padding: .4375rem 0;
+            font-size: 1.125rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .dd-desc {
+            color: #666;
+            margin-top: 1.25rem;
+            text-align: center;
+        }
+
+        .dd-desc span {
+            display: inline-block;
+            width: 12.5rem;
+        }
+
+        .dd-qrcode-box {
+            position: relative;
+            width: 15rem;
+            height: 15rem;
+            border: .0625rem solid #dedede;
+            margin: 0;
+            overflow: hidden;
+            margin: 1.875rem auto 0;
+        }
+
+        .dd-qrcode {
+            width: 320px;
+            height: 360px;
+            display: inline-block;
+            position: relative;
+            z-index: 9;
+
+
+        }
+
+        .dd-qrcode iframe {
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 1;
+        }
+
+        .dd-note {
+            color: #ff9500;
+            line-height: 1.5rem;
+            border: .0625rem solid #ff9500;
+            background-color: #fff7ec;
+            border-radius: .75rem;
+            padding: 0 .9375rem;
+            display: inline-block;
+            margin-top: 2.625rem;
+            margin-bottom: 2.8125rem;
+        }
+
+        .form-change-pwd,
+        .form-login {
+            flex: 1;
+            padding: 0 2.8125rem;
+            position: relative;
+        }
+
+        .form-tabs {
+            padding: 0;
+            margin: 0;
+        }
+
+        .form-tabs li {
+            list-style: none;
+            display: inline-block;
+            padding: .3125rem;
+            font-size: 1.125rem;
+            cursor: pointer;
+        }
+
+        .form-tabs li.current {
+            color: #008bd6;
+            font-weight: 600;
+            border-bottom: .1875rem solid #008bd6;
+        }
+
+        .form-tabs li+li {
+            margin-left: 4.1875rem;
+        }
+
+        .form-content {
+            margin-top: 1.25rem;
+        }
+
+        .account-form {}
+
+        .form-control {
+            margin-top: 1.25rem;
+        }
+
+        .form-control label {
+            display: block;
+            font-size: .9375rem;
+            padding-bottom: .625rem;
+        }
+
+        .form-control input {
+            outline: none;
+            border: .0625rem solid #dedede;
+            border-radius: .375rem;
+            padding: .625rem 1.25rem;
+            font-size: .9375rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .button-group {
+            margin-top: 1.875rem;
+            width: 100%;
+        }
+
+        .button-group button {
+            color: #fff;
+            font-size: 1.125rem;
+            background-color: #008bd6;
+            padding: .625rem;
+            border: none;
+            border-radius: .375rem;
+            width: 100%;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .button-group button.disabled {
+            cursor: no-drop;
+            background-color: #afd9ef;
+        }
+
+        .phone-form {
+            display: none;
+        }
+
+        .code-input {
+            position: relative;
+        }
+
+        .code-input .btn {
+            position: absolute;
+            top: 0;
+            right: 0;
+            display: inline-block;
+            background-color: transparent;
+            font-size: .9375rem;
+            color: #008bd6;
+            border: none;
+            line-height: 1.875rem;
+            cursor: pointer;
+            padding: 0 .625rem;
+            margin: .375rem 0;
+            border-left: .0625rem solid #dedede;
+            min-width: 4.75rem;
+            text-align: center;
+            user-select: none;
+        }
+
+        .code-input .btn.disabled {
+            cursor: no-drop;
+            color: #666;
+        }
+
+        .google-icon {
+            width: 1.25rem;
+            height: 1.25rem;
+            background-image: url("/mga/sps/static/dtb/images/icon2.png");
+            background-repeat: no-repeat;
+            background-position: -1.625rem 0;
+            background-size: 4.5rem;
+            display: inline-block;
+            transform: scale(.9);
+            position: relative;
+            top: .1875rem;
+            margin: 0 .3125rem;
+        }
+
+        .firefox-icon {
+            width: 1.25rem;
+            height: 1.25rem;
+            background-image: url("/mga/sps/static/dtb/images/icon2.png");
+            background-repeat: no-repeat;
+            background-position: -3.125rem 0;
+            background-size: 4.5rem;
+            display: inline-block;
+            margin-left: 1.25rem;
+            transform: scale(.9);
+            position: relative;
+            top: .1875rem;
+            margin: 0 .3125rem;
+        }
+
+        .ie-icon {
+            width: 1.25rem;
+            height: 1.25rem;
+            background-image: url("/mga/sps/static/dtb/images/icon2.png");
+            background-repeat: no-repeat;
+            background-position: 0 0;
+            background-size: 4.5rem;
+            display: inline-block;
+            margin-left: 1.25rem;
+            transform: scale(.9);
+            position: relative;
+            top: .1875rem;
+            margin: 0 .3125rem;
+        }
+
+        .second {
+            /* display: none; */
+            text-align: center;
+        }
+
+        .second-in {
+            width: 28.75rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            margin: 0 auto;
+            padding: 3.125rem;
+            box-sizing: border-box;
+        }
+
+        .second p {
+            font-size: .875rem;
+            line-height: 1.4375rem;
+        }
+
+        .second .form-control {
+            text-align: left;
+            width: 100%;
+            margin: 1.25rem auto 0;
+        }
+
+        .error-msg {
+            display: none;
+            padding: .5rem .9375rem;
+            margin: 0 0 1.25rem 0;
+            color: rgb(248, 0, 0);
+            background-color: #ff00000d;
+            border: .0625rem solid #ff000033;
+            border-radius: .375rem;
+            position: absolute;
+            width: 21.75rem;
+            top: -1.75rem;
+            text-align: center;
+        }
+
+        .info-msg {
+            display: none;
+            padding: .5rem .9375rem;
+            margin: 0 0 1.25rem 0;
+            color: rgb(62, 0, 248);
+            background-color: #ff00000d;
+            border: .0625rem solid #0800ff33;
+            border-radius: .375rem;
+            position: absolute;
+            width: 21.75rem;
+            top: -1.75rem;
+            text-align: center;
+        }
+
+        .tips {
+            color: #008BD6;
+            text-decoration: none;
+            margin: 1.875rem 0;
+        }
+
+
+        .tips-1 {
+            display: none;
+            margin: 1.25rem 0;
+            font-size: .8125rem;
+            text-align: center;
+        }
+
+        .tips a,
+        .tips-1 a {
+            color: #008BD6;
+            text-decoration: none;
+        }
+
+        .tips a {
+            cursor: pointer;
+        }
+
+        footer {
+            display: flex;
+            padding: .3125rem .9375rem;
+            justify-content: space-between;
+            font-size: .75rem;
+            color: #999;
+        }
+
+        .w-h {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+            height: calc(100vh - 1.625rem);
+        }
+
+        label.error {
+            color: red;
+            font-size: .75rem;
+            position: absolute;
+            padding: 0;
+            font-size: .75rem;
+        }
+
+        .newpassword-form {
+            display: none;
+        }
+
+        .login-h3 {
+            font-size: 1.125rem;
+            text-align: center;
+            margin: 0 0 2.1875rem;
+        }
+
+        .login-small {
+            font-size: .875rem;
+            text-align: center;
+            color: #666;
+            margin-bottom: 1.875rem;
+        }
+
+        .form-dtb {
+            width: 23.75rem;
+            margin: 0 auto;
+            padding: 1.25rem;
+            box-sizing: border-box;
+        }
+
+        @media (min-width: 48rem) {
+            .login-wrapper {
+                min-width: 43.75rem;
+            }
+        }
+
+        @media (max-width: 47.9375rem) {
+            body {
+                background-color: #fff;
+            }
+
+            .w-h {
+                height: calc(100vh);
+            }
+
+            .login-container {
+                width: 100%;
+            }
+
+            .form-change-pwd,
+            .form-login {
+                padding: 0 1rem;
+            }
+
+
+            .qywx-login,
+            .login-header,
+            .form-control>label,
+            .browser-tips,
+            footer {
+                display: none;
+            }
+
+            .form-control input {
+                outline: none;
+                border: .0625rem solid #f9f9f9;
+                background-color: #f9f9f9;
+                border-radius: .375rem;
+                padding: .75rem;
+                font-size: .9375rem;
+                width: 100%;
+                box-sizing: border-box;
+            }
+
+            .button-group button {
+                padding: .75rem;
+            }
+
+            .form-tabs {
+                display: flex;
+                justify-content: center;
+            }
+
+            /* .second-in {
+              width: 100%;
+              padding: 1rem;
+            }*/
+
+            label.error {
+                display: block;
+                color: red;
+                font-size: .75rem;
+                position: absolute;
+                padding: 0;
+                font-size: .75rem;
+            }
+
+            .tips {
+                text-align: center;
+                margin-top: 3.125rem;
+            }
+
+            .tips-1 {
+                display: block;
+            }
+
+            .form-dtb {
+                width: 100%;
+            }
+        }
+
+        .nc-wrapper {
+            display: none;
+            height: 2.125rem;
+        }
+
+        .nc-wrapper .nc-container #nc_1_wrapper {
+            width: 21.8125rem;
+        }
+
+        #change-pwd {
+            display: none;
+        }
+
+        .go-back {
+            margin-left: 20px;
+            color: #008BD6;
+            cursor: pointer;
+        }
+
+        .sk-fading-circle {
+            margin: 100px auto;
+            width: 40px;
+            height: 40px;
+            position: relative;
+            display: none;
+        }
+
+        .sk-fading-circle .sk-circle {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+
+        .sk-fading-circle .sk-circle:before {
+            content: '';
+            display: block;
+            margin: 0 auto;
+            width: 15%;
+            height: 15%;
+            background-color: #333;
+            border-radius: 100%;
+            -webkit-animation: sk-circleFadeDelay 1.2s infinite ease-in-out both;
+            animation: sk-circleFadeDelay 1.2s infinite ease-in-out both;
+        }
+
+        .sk-fading-circle .sk-circle2 {
+            -webkit-transform: rotate(30deg);
+            -ms-transform: rotate(30deg);
+            transform: rotate(30deg);
+        }
+
+        .sk-fading-circle .sk-circle3 {
+            -webkit-transform: rotate(60deg);
+            -ms-transform: rotate(60deg);
+            transform: rotate(60deg);
+        }
+
+        .sk-fading-circle .sk-circle4 {
+            -webkit-transform: rotate(90deg);
+            -ms-transform: rotate(90deg);
+            transform: rotate(90deg);
+        }
+
+        .sk-fading-circle .sk-circle5 {
+            -webkit-transform: rotate(120deg);
+            -ms-transform: rotate(120deg);
+            transform: rotate(120deg);
+        }
+
+        .sk-fading-circle .sk-circle6 {
+            -webkit-transform: rotate(150deg);
+            -ms-transform: rotate(150deg);
+            transform: rotate(150deg);
+        }
+
+        .sk-fading-circle .sk-circle7 {
+            -webkit-transform: rotate(180deg);
+            -ms-transform: rotate(180deg);
+            transform: rotate(180deg);
+        }
+
+        .sk-fading-circle .sk-circle8 {
+            -webkit-transform: rotate(210deg);
+            -ms-transform: rotate(210deg);
+            transform: rotate(210deg);
+        }
+
+        .sk-fading-circle .sk-circle9 {
+            -webkit-transform: rotate(240deg);
+            -ms-transform: rotate(240deg);
+            transform: rotate(240deg);
+        }
+
+        .sk-fading-circle .sk-circle10 {
+            -webkit-transform: rotate(270deg);
+            -ms-transform: rotate(270deg);
+            transform: rotate(270deg);
+        }
+
+        .sk-fading-circle .sk-circle11 {
+            -webkit-transform: rotate(300deg);
+            -ms-transform: rotate(300deg);
+            transform: rotate(300deg);
+        }
+
+        .sk-fading-circle .sk-circle12 {
+            -webkit-transform: rotate(330deg);
+            -ms-transform: rotate(330deg);
+            transform: rotate(330deg);
+        }
+
+        .sk-fading-circle .sk-circle2:before {
+            -webkit-animation-delay: -1.1s;
+            animation-delay: -1.1s;
+        }
+
+        .sk-fading-circle .sk-circle3:before {
+            -webkit-animation-delay: -1s;
+            animation-delay: -1s;
+        }
+
+        .sk-fading-circle .sk-circle4:before {
+            -webkit-animation-delay: -0.9s;
+            animation-delay: -0.9s;
+        }
+
+        .sk-fading-circle .sk-circle5:before {
+            -webkit-animation-delay: -0.8s;
+            animation-delay: -0.8s;
+        }
+
+        .sk-fading-circle .sk-circle6:before {
+            -webkit-animation-delay: -0.7s;
+            animation-delay: -0.7s;
+        }
+
+        .sk-fading-circle .sk-circle7:before {
+            -webkit-animation-delay: -0.6s;
+            animation-delay: -0.6s;
+        }
+
+        .sk-fading-circle .sk-circle8:before {
+            -webkit-animation-delay: -0.5s;
+            animation-delay: -0.5s;
+        }
+
+        .sk-fading-circle .sk-circle9:before {
+            -webkit-animation-delay: -0.4s;
+            animation-delay: -0.4s;
+        }
+
+        .sk-fading-circle .sk-circle10:before {
+            -webkit-animation-delay: -0.3s;
+            animation-delay: -0.3s;
+        }
+
+        .sk-fading-circle .sk-circle11:before {
+            -webkit-animation-delay: -0.2s;
+            animation-delay: -0.2s;
+        }
+
+        .sk-fading-circle .sk-circle12:before {
+            -webkit-animation-delay: -0.1s;
+            animation-delay: -0.1s;
+        }
+
+        @-webkit-keyframes sk-circleFadeDelay {
+
+            0%,
+            39%,
+            100% {
+                opacity: 0;
+            }
+
+            40% {
+                opacity: 1;
+            }
+        }
+
+        @keyframes sk-circleFadeDelay {
+
+            0%,
+            39%,
+            100% {
+                opacity: 0;
+            }
+
+            40% {
+                opacity: 1;
+            }
+        }
+
+        .c-dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .c-dialog * {
+            margin: 0;
+            padding: 0;
+            font-size: 14px;
+            line-height: 2;
+        }
+
+        .c-dialog h2,
+        .c-dialog h3 {
+            margin-bottom: 0.5em;
+        }
+
+        .c-dialog-window {
+            background-color: white;
+            width: 50%;
+            border-radius: 25px;
+            overflow: hidden;
+        }
+
+        .c-dialog-content {
+            max-height: 50vh;
+            overflow: auto;
+            padding: 20px;
+        }
+
+        .c-dialog-content-block:not(:last-child) {
+            margin-bottom: 20px;
+        }
+
+        .c-dialog-content-group:not(:last-child) {
+            margin-bottom: 15px;
+        }
+
+        .c-dialog-footer {
+            display: flex;
+            align-items: stretch;
+            border-top: 1px solid #ccc;
+        }
+
+        .c-dialog-resolve,
+        .c-dialog-cancel {
+            transition: 100ms;
+        }
+
+        .c-dialog-resolve:hover,
+        .c-dialog-cancel:hover {
+            opacity: 0.8;
+        }
+
+        .c-dialog-resolve,
+        .c-dialog-pending {
+            flex: 1;
+            text-align: center;
+            line-height: 2.5;
+            padding: 0 1em;
+            cursor: pointer;
+        }
+
+        .c-dialog-pending {
+            color: #999;
+            cursor: not-allowed;
+        }
+
+        .c-dialog-resolve {
+            display: none;
+            color: #008BD6;
+        }
+
+        .c-dialog.resolved .c-dialog-pending {
+            display: none;
+        }
+
+        .c-dialog.resolved .c-dialog-resolve {
+            display: block;
+        }
+
+        .c-dialog-cancel {
+            border: none;
+            padding: 0 20px;
+            border-left: 1px solid #ccc;
+            cursor: pointer;
+        }
+
+        @media screen and (max-width: 768px) {
+            .c-dialog-window {
+                width: 80%;
+            }
+
+            .c-dialog-footer {
+                flex-direction: column;
+            }
+        }
+    </style>
+    </style>
+    <title data-i18n="titletop"></title>
+<SCRIPT type="text/javascript">
+/*<![CDATA[*/ 
+document.cookie = "IV_JCT=%2Fmga; path=/;secure";
+/*]]>*/ 
+</SCRIPT>
+</head>
+
+<body>
+<!--script>
+!(function(c,b,d,a){c[a]||(c[a]={});c[a].config={pid:"el41w4zc9w@5e8611039e79bf7",appType:"web",imgUrl:"https://arms-retcode.aliyuncs.com/r.png?",sendResource:true,enableLinkTrace:true,behavior:true};
+with(b)with(body)with(insertBefore(createElement("script"),firstChild))setAttribute("crossorigin","",src=d)
+})(window,document,"https://retcode.alicdn.com/retcode/bl.js","__bl");
+</script-->
+<div class="c-dialog">
+    <div class="c-dialog-window">
+        <div class="c-dialog-content">
+            <div class="c-dialog-content-block">
+                <h2 data-i18n="autologinnote1"></h2>
+                <p data-i18n="autologinnote2">
+                </p>
+            </div>
+            <div class="c-dialog-content-block">
+                <div class="c-dialog-content-group">
+                    <h3 data-i18n="autologinnote3"></h3>
+                    <p data-i18n="autologinnote4"></p>
+                </div>
+                <div class="c-dialog-content-group">
+                    <h3 data-i18n="autologinnote5"></h3>
+                    <p data-i18n="autologinnote6"></p>
+                </div>
+                <div class="c-dialog-content-group">
+                    <h3 data-i18n="autologinnote7"></h3>
+                    <p data-i18n="autologinnote8"></p>
+                </div>
+            </div>
+        </div>
+        <div class="c-dialog-footer">
+            <div class="c-dialog-pending"><span data-i18n="autologinnote9"></span>（<span class="c-countdown">5</span>s）
+            </div>
+            <div class="c-dialog-resolve" data-i18n="autologinnote10"></div>
+            <button class="c-dialog-cancel" data-i18n="autologinnote11"></button>
+        </div>
+    </div>
+</div>
+<div class="login-header">
+    <div class="language-wrapper" data-value="1" data-state="closed">
+        <span id="languageIcon" class="iconfont icon-zhongwen"></span>
+        <span id="languageText">中文</span>
+        <span id="languageTriangle" class="iconfont icon-caret-down-small-copy"></span>
+        <span class="language-selector-icon"></span>
+        <ul class="language-selector">
+            <li data-value="1">中文</li>
+            <li data-value="2">English</li>
+        </ul>
+    </div>
+</div>
+<div class="sk-fading-circle" id="sk-fading-circle">
+    <div class="sk-circle1 sk-circle"></div>
+    <div class="sk-circle2 sk-circle"></div>
+    <div class="sk-circle3 sk-circle"></div>
+    <div class="sk-circle4 sk-circle"></div>
+    <div class="sk-circle5 sk-circle"></div>
+    <div class="sk-circle6 sk-circle"></div>
+    <div class="sk-circle7 sk-circle"></div>
+    <div class="sk-circle8 sk-circle"></div>
+    <div class="sk-circle9 sk-circle"></div>
+    <div class="sk-circle10 sk-circle"></div>
+    <div class="sk-circle11 sk-circle"></div>
+    <div class="sk-circle12 sk-circle"></div>
+</div>
+<div class="w-h" id="w-h">
+    <div class="login-container" id="login-container">
+        <div class="logo">
+            <img src="/mga/sps/static/dtb/images/logo_white.png" />
+            <div class="title" data-i18n="titlehome"></div>
+        </div>
+        <div id="auth" class="login-wrapper">
+            <div class="login-content">
+                <div class="login-first">
+                    <div class="login-first-in">
+                        <!--div class="qywx-login">
+                          <div class="qywx-title">
+                            <span data-i18n="qywxLogin"></span>
+                          </div>
+                          <div class="qywx-desc">
+                            <span data-i18n="qywxLogindesc"></span>
+                          </div>
+                          <div class="qywx-qrcode-box">
+          <div style="
+              width: 100%;
+              height: 100%;
+              position: absolute;
+              top: 0;
+              left: 0;
+              z-index: 10000;
+          "></div>
+                            <div class="qywx-qrcode" id="qywx-qrcode">
+                            </div>
+                          </div>
+                          <div class="qywx-note">
+                            <span data-i18n="qywxLoginNote"></span>
+                          </div>
+                        </div-->
+                        <div class="dd-login" id="dd-login">
+                            <div class="dd-title">
+                                <span data-i18n="ddLogin"></span>
+                            </div>
+                            <div class="dd-desc">
+                                <span data-i18n="ddLogindesc"></span>
+                            </div>
+                            <div class="dd-qrcode-box">
+                                <div style="width: 100%;height: 100%;position: absolute;top: 0;left: 0;z-index: 10000;"></div>
+                                <div class="dd-qrcode" id="dd-qrcode">
+                                </div>
+                                <div id="dd-qrcode">
+                                </div>
+                            </div>
+                            <div class="dd-note">
+                                <span data-i18n="ddLoginNote"></span>
+                            </div>
+                        </div>
+                        <div class="form-login" id="loginform">
+                            <div id="errorMsg" class="error-msg"></div>
+                            <div id="infoMsg" class="info-msg"></div>
+                            <ul class="form-tabs">
+                                <li data-i18n="uidLogin" class="current"></li>
+                                <li data-i18n="phoneLogin" id="phoneLogin"></li>
+                            </ul>
+                            <div class="form-content">
+                                <form id="accountForm" class="account-form">
+                                    <div class="form-control">
+                                        <label data-i18n="uidLabel" for="userEmail"></label>
+                                        <input type="text" name="userEmail" id="userEmail" maxlength="256"
+                                               data-i18n="placeholderUserinput" placeholder="" />
+                                    </div>
+                                    <div class="form-control">
+                                        <label data-i18n="pwdLabel" for="password"></label>
+                                        <input type="password" name="password" id="password" maxlength="32" autocomplete="off"
+                                               data-i18n="placeholderPwdinput" />
+                                    </div>
+                                    <div class="form-control">
+                                        <div class="nc-wrapper">
+                                            <div id="nc"></div>
+                                        </div>
+                                    </div>
+                                    <div class="button-group">
+                                        <button data-i18n="loginButton" type="button" id="accountLoginBtn"></button>
+                                    </div>
+                                </form>
+
+                                <form id="nextStepForm" class="phone-form">
+                                    <div class="form-control">
+                                        <label data-i18n="phoneLabel" for="phoneNumber"></label>
+                                        <input type="text" name="phoneNumber" id="phoneNumber" maxlength="20"
+                                               data-i18n="placeholderPhoneinput" />
+                                    </div>
+                                    <div class="form-control">
+                                        <label data-i18n="codeLabel" for="code"></label>
+                                        <div class="code-input">
+                                            <input type="text" name="code" id="code" maxlength="6" data-i18n="placeholderCodeinput" />
+                                            <div id="getCodeBtn" data-i18n="getcode" class="btn"></div>
+                                        </div>
+                                    </div>
+                                    <div class="button-group">
+                                        <button data-i18n="loginButton" type="button" id="nextStepBtn"><span
+                                                data-i18n="next"></span></button>
+                                    </div>
+                                </form>
+                            </div>
+                            <p class="tips-1">登录即表示您已阅读并同意天合光能的<a href="#">用户协议</a>和<a href="#">隐私政策</a></p>
+                            <div style="margin-top:15px">
+                                <span class="tips" id="forgetpwdtips"><a id="forgetpwd" data-i18n="forgetpwd">忘记密码</a></span>
+                                <!--                                <span style="float:right" id="autologincheckspan"><input type="checkbox" name="autologincheck"-->
+                                <!--                                                                                         id="autologincheck" value="" style="float:left" /> <span style="line-height:13px;margin-left:3px"-->
+                                <!--                                                                                                                                                  data-i18n="autologincheck"></span></span>-->
+                            </div>
+                            <button id="btnSlider" style="display:none;"></button>
+                            <div id="btnSliderDiv" class="btnSliderDiv"></div>
+                            <div class="browser-tips" style="position: absolute; bottom: 2rem; left: 4.375rem;">
+                                <p><span data-i18n="needuse"></span>
+                                    <span class="google-icon"></span>Chrome、<span class="firefox-icon"></span>Firefox、<span
+                                            class="ie-icon"></span>IE10+
+                                </p>
+                            </div>
+                        </div>
+                        <div class="form-login" id="autologinform">
+                            <div style="text-align: center; margin: 2rem 0;font-size: 1rem;">
+                                <img src="/mga/sps/static/dtb/images/autoloading1.gif"
+                                     style="width: 70%; display: block; margin: 0 auto;" />
+                                <div data-i18n="autologinform"></div>
+                            </div>
+                            <div class="browser-tips" style="position: absolute; bottom: 2rem; left: 4.375rem;">
+                                <p><span data-i18n="needuse"></span>
+                                    <span class="google-icon"></span>Chrome、<span class="firefox-icon"></span>Firefox、<span
+                                            class="ie-icon"></span>IE10+
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        <div class="login-wrapper" id="otpDiv" style="display:none;">
+            <div class="second-in">
+                <p data-i18n="needSendAuth"></p>
+                <p data-i18n="needSendAuthTips"></p>
+                <form id="otpForm" class="form-control">
+                    <label for="dynamicCode" data-i18n="OTPLabel"></label>
+                    <input type="text" name="dynamicCode" id="dynamicCode" placeholder="" />
+                </form>
+                <div class="button-group">
+                    <button type="button" id="otpLoginBtn" class="button-group" data-i18n="loginButton"></button>
+                </div>
+            </div>
+        </div>
+        <div id="change-pwd" class="login-wrapper">
+            <div class="go-back" id="go-back" data-i18n="goback">back</div>
+            <div class="form-change-pwd form-dtb">
+                <h3 data-i18n="titlegetbackpwd" class="login-h3"></h3>
+                <div data-i18n="getbackpwdtips" class="login-small " id="getbackpwdtips"></div>
+                <div id="errorMsg" class="error-msg"></div>
+                <div id="infoMsg" class="info-msg"></div>
+                <form id="smsCodeForm" class="account-form">
+                    <div class="form-control">
+                        <label data-i18n="newpassword" for="newpassword1"></label></label>
+                        <input type="password" name="newpassword1" id="newpassword1" data-i18n-placeholder="placeholder" />
+                    </div>
+                    <div class="form-control">
+                        <label data-i18n="confirmpassword" for="confirmpassword1"></label>
+                        <div class="code-input">
+                            <input type="password" name="confirmpassword1" id="confirmpassword1"
+                                   data-i18n-placeholder="placeholder" />
+                        </div>
+                    </div>
+                    <div class="form-control">
+                        <label data-i18n="phoneLabel" for="phoneNumberChange1"></label>
+                        <input type="text" name="phoneNumberChange" id="phoneNumberChange" maxlength="20"
+                               data-i18n-placeholder="placeholder" />
+                    </div>
+                    <div class="form-control">
+                        <label data-i18n="codeLabel" for="chgPwdCode"></label>
+                        <div class="code-input">
+                            <input type="text" name="code" id="chgPwdCode" maxlength="6" data-i18n-placeholder="placeholder" />
+                            <div data-i18n="getcode" id="getCodeBtn2" class="btn"></div>
+                        </div>
+                    </div>
+                    <div class="button-group">
+                        <button type="button" data-i18n="submit" id="smsCodeFormBtn1"></button>
+                    </div>
+                </form>
+
+                <form id="setNewPasswordForm" class="newpassword-form">
+                    <div class="form-control">
+                        <label data-i18n="newpassword" for="newpassword"></label></label>
+                        <input type="password" name="newpassword" id="newpassword" data-i18n-placeholder="placeholder" />
+                    </div>
+                    <div class="form-control">
+                        <label data-i18n="confirmpassword" for="confirmpassword"></label>
+                        <div class="code-input">
+                            <input type="password" name="confirmpassword" id="confirmpassword"
+                                   data-i18n-placeholder="placeholder" />
+                        </div>
+                    </div>
+                    <div class="button-group">
+                        <button data-i18n="submit" type="button" id="setNewPasswordBtn"></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <form id="validateForm" method="POST" action="/mga/sps/authsvc/policy/p_dtbAuth?StateId=lCyktzXzrHRWuxtzHAQP3P7yrA0w0slZm0rar953xpdtbuSf55xNuaUYEyqYgCI28hKX4E3ythqls9S7K6BeMoaS2N8QIGEJdM4STS5fm9DlggQg8hZK1KmdBVhdPoVy">
+        <input type="hidden" name="uid" id="uid" value="" />
+        <input type="hidden" name="operation" value="verify" />
+    </form>
+    <form id="dtbForm" method="POST" action="/mga/sps/authsvc/policy/p_dtbAuth?StateId=lCyktzXzrHRWuxtzHAQP3P7yrA0w0slZm0rar953xpdtbuSf55xNuaUYEyqYgCI28hKX4E3ythqls9S7K6BeMoaS2N8QIGEJdM4STS5fm9DlggQg8hZK1KmdBVhdPoVy">
+        <input type="hidden" name="dtbuid" id="dtbuid" value="" />
+        <input type="hidden" name="dtbpwd" id="dtbpwd" value="" />
+        <input type="hidden" name="ioaticket" id="ioaticket" value="" />
+
+        <input type="hidden" name="operation" value="verify" />
+    </form>
+    <form id="dtbPhoneForm" method="POST" action="/mga/sps/authsvc/policy/p_dtbAuth?StateId=lCyktzXzrHRWuxtzHAQP3P7yrA0w0slZm0rar953xpdtbuSf55xNuaUYEyqYgCI28hKX4E3ythqls9S7K6BeMoaS2N8QIGEJdM4STS5fm9DlggQg8hZK1KmdBVhdPoVy">
+        <input type="hidden" name="dtbphone" id="dtbphone" value="" />
+        <input type="hidden" name="dtbcode" id="dtbcode" value="" />
+        <input type="hidden" name="operation" value="verify" />
+    </form>
+    <form id="qrcodeForm" method="POST" action="/mga/sps/authsvc/policy/p_dtbAuth?StateId=lCyktzXzrHRWuxtzHAQP3P7yrA0w0slZm0rar953xpdtbuSf55xNuaUYEyqYgCI28hKX4E3ythqls9S7K6BeMoaS2N8QIGEJdM4STS5fm9DlggQg8hZK1KmdBVhdPoVy">
+        <input type="hidden" name="qrcode" id="qrcode" value="" />
+        <input type="hidden" name="operation" value="verify" />
+    </form>
+    <form id="ddqrcodeForm" method="POST" action="/mga/sps/authsvc/policy/p_dtbAuth?StateId=lCyktzXzrHRWuxtzHAQP3P7yrA0w0slZm0rar953xpdtbuSf55xNuaUYEyqYgCI28hKX4E3ythqls9S7K6BeMoaS2N8QIGEJdM4STS5fm9DlggQg8hZK1KmdBVhdPoVy">
+        <input type="hidden" name="ddqrcode" id="ddqrcode" value="" />
+        <input type="hidden" name="operation" value="verify" />
+    </form>
+    <form id="ioaForm" method="POST" action="/mga/sps/authsvc/policy/p_dtbAuth?StateId=lCyktzXzrHRWuxtzHAQP3P7yrA0w0slZm0rar953xpdtbuSf55xNuaUYEyqYgCI28hKX4E3ythqls9S7K6BeMoaS2N8QIGEJdM4STS5fm9DlggQg8hZK1KmdBVhdPoVy">
+        <input type="hidden" name="ticket" id="ticket" value="" />
+        <input type="hidden" name="operation" value="verify" />
+    </form>
+</div>
+<footer>
+    <div>©Trina Solar Co.,LTD. Copyright 2003 Su ICP No. 05061346 -1</div>
+    <div>Legal Notice | Privarcy Policy</div>
+</footer>
+<script>
+    // 获取缩放倍数（1*系统缩放倍数*浏览器缩放倍数）
+    function getZoom() {
+        var zoom = 1;
+        var screen = window.screen,
+            ua = navigator.userAgent.toLowerCase();
+
+        if (window.devicePixelRatio !== undefined) {
+            zoom = window.devicePixelRatio;
+        } else if (~ua.indexOf('msie')) {
+            if (screen.deviceXDPI && screen.logicalXDPI) {
+                zoom = screen.deviceXDPI / screen.logicalXDPI;
+            }
+        } else if (window.outerWidth !== undefined && window.innerWidth !== undefined) {
+            zoom = window.outerWidth / window.innerWidth;
+        }
+        return getDecimal(zoom);
+    }
+
+    var getDecimal = function(num){
+        return Math.round(num * 100) / 100;
+    };
+
+    function getAllZoom() {
+        // 总缩放倍数
+        var zoom = getZoom();
+        // 屏幕分辨率
+        var screenResolution = window.screen.width;
+        // 获取浏览器内部宽度
+        var browserWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+        // 浏览器缩放倍数
+        // 浏览器外部宽度不受浏览器缩放影响，浏览器内部宽度受影响,所以根据这个可以计算出浏览器缩放倍数（F12调试工具的占位会影响该值）
+        var browserZoom = getDecimal(window.outerWidth / browserWidth);
+        // 系统缩放倍数
+        var systemZoom = getDecimal(zoom / browserZoom);
+        // 系统分辨率
+        var systemResolution = Math.round(screenResolution * systemZoom);
+
+        console.log('系统分辨率', systemResolution, '屏幕分辨率', screenResolution, '浏览器外部宽度', window.outerWidth, '浏览器内部宽度', browserWidth, '总缩放倍数', zoom, '浏览器缩放倍数', browserZoom, '系统缩放倍数', systemZoom);
+
+        return systemZoom;
+    }
+
+    var zoom = getAllZoom();
+    var checkAutoLoginUrl='https://iam.trinasolar.com/iiam/checkAutoLogin?ticket=';
+    $("#autologinform").hide();
+    $("#loginform").show();
+    $("#autologincheckspan").hide();
+
+    var uidPwdErrorNumLimit = 4;
+    var varifyUserOtpCodeUrl = "/iiam/iiam/otp/varifyUserOtpCode";
+    var appid = "wx191c3d835652ca64";
+    var ddappid="dingd6hrpaxrffehmmn6";
+    var agentid = "1000164";
+    var amUrl = "https://iam.trinasolar.com/mga/sps/authsvc/policy/p_dtbAuth";
+    var getSmsCodeUrl = "https://iam.trinasolar.com/iiam/getSmsCode";
+    var accLoginUrl = "https://iam.trinasolar.com/iiam/accountLogin";
+    var getphonecodeurl = "https://iam.trinasolar.com/iiam/getSmsCode";
+    var phoneloginurl = "https://iam.trinasolar.com/iiam/phoneLogin";
+    var oauthAuthorizeUrl = "https://open.weixin.qq.com/connect/oauth2/authorize";
+    var ddoauthAuthorizeUrl = "https://oapi.dingtalk.com/connect/oauth2/sns_authorize";
+    var phoneNumberChange, code,btnClickTime,phoneNumberChange1,captcha,errorStr;
+    var changePwdByMobileUrl = "https://iam.trinasolar.com/isimWB/ChangePwdByPhone1";
+    var verifySmsCodeUrl = "https://iam.trinasolar.com/iiam/verifySmsCode1";
+    if (window.performance.navigation.type == 2) {
+        window.location = "/";
+        //console.log("表示当前页面是通过点击后退按钮或者是通过history.go(-1)加载的");
+    }
+    var phoneNumberChange1;
+    $(document).ready(function () {
+        var time_stamp = Date.now();
+        var sole_id = Math.random().toString(36).substring(2);
+        var app_id = "75531deb-e1d1-43bf-a939-5506b9a45ef4";
+        var ioaurl = "https://localhost.sso.gateway.tencent.com:54339/api/public/clientlogin/auth_login?time_stamp="
+            + time_stamp
+            + "&sole_id=" + sole_id + "&app_id=" + app_id + "&reserve=";
+        $.ajax({
+            url: ioaurl,
+            timeout: 3000,
+            type: "GET",
+            success: function (res) {
+                if (res.errorcode == '0') {
+                    document.getElementById("ticket").value = res.ticket;
+                    //var autologin = getCookie("autologin");
+                    var autologin = checkAutoLogin(res.ticket);
+                    if (autologin == 'true') {
+                        $("#autologinform").show();
+                        $("#loginform").hide();
+                        submitIoaForm(res.ticket);
+                    } else {
+                        $("#autologinform").hide();
+                        $("#loginform").show();
+                        $("#autologincheckspan").show();
+                    }
+                } else {
+                    $("#autologinform").hide();
+                    $("#loginform").show();
+                }
+            }, error: function (e) {
+                $("#autologinform").hide();
+                $("#loginform").show();
+            }
+        })
+
+        $("#autologincheck").click(function () {
+            if ($(this).prop("checked")) {
+
+                autoLoginDialog.open();
+                //var expirationDate = new Date();
+                //expirationDate.setDate(expirationDate.getDate() + 365);
+                //document.cookie = 'autologin=true;path=/;expires='+expirationDate.toUTCString();
+            } else {
+                setAutoLogin("false");
+                // var expirationDate = new Date();
+                //expirationDate.setDate(expirationDate.getDate()  - 1);
+                //document.cookie = 'autologin=true;path=/;expires='+expirationDate.toUTCString();
+            }
+
+        });
+        function checkAutoLogin(ticket) {
+            // var url = checkAutoLoginUrl+ ticket;
+            // var rst = "false";
+            // $.ajax({
+            //     url: url,
+            //     type: "post",
+            //     async: false,
+            //     success: function (res) {
+            //         rst = res.msg;
+            //     }, error: function (e) {
+            //         rst = "false";
+            //     }
+            // })
+            // return rst;
+            return "false";
+        }
+
+        function setAutoLogin(status) {
+            var ticket = $('#ticket').val();
+            //var url = "https://iam.trinasolar.com/iiam/setAutoLogin?ticket="+ticket+"&status="+status;
+            //       $.ajax({
+            //        url: url ,
+            //        type: "post",
+            //        success: function (res) {
+            //             return "true";
+            //        },error:function(e){
+            //                 return "false";
+            //        }
+            //    });
+            if (status == 'true') {
+                document.getElementById("ioaticket").value = ticket;
+            } else {
+                document.getElementById("ioaticket").value = '';
+            }
+
+        }
+        var $dialog = $('.c-dialog');
+        var $countdown = $('.c-countdown');
+        var $confirm = $('.c-dialog-resolve');
+        var $cancel = $('.c-dialog-cancel');
+
+        var obj = {
+            num: 5,
+            init: function () {
+                $confirm.on('click', this.confirm.bind(this));
+                $cancel.on('click', this.cancel.bind(this));
+            },
+            open: function () {
+                $dialog.css('display', 'flex');
+                this.countdown();
+            },
+            close: function () {
+                $dialog.css('display', 'none');
+            },
+            reset: function () {
+                this.num = 5;
+                this.updateCountdown();
+                $dialog.removeClass('resolved');
+                if (this.timer) {
+                    clearTimeout(this.timer);
+                }
+                this.timer = null;
+            },
+            countdown: function () {
+                this.timer = setTimeout((function () {
+                    this.num--;
+
+                    if (this.num <= 0) {
+                        $dialog.addClass('resolved');
+                        if (this.timer) {
+                            clearTimeout(this.timer);
+                        }
+                        this.timer = null;
+                        return;
+                    }
+
+                    this.updateCountdown();
+                    this.countdown();
+                }).bind(this), 1000);
+            },
+            updateCountdown: function () {
+                $countdown.text(this.num);
+            },
+            confirm: function () {
+                this.close();
+                this.reset();
+                this.onConfirm();
+            },
+            onConfirm: function () { },
+            cancel: function () {
+                setAutoLogin("false");
+                this.close();
+                this.reset();
+                $("#autologincheck").prop("checked", false);
+            },
+        };
+
+        window.autoLoginDialog = obj;
+        obj.init();
+
+
+        window.autoLoginDialog.onConfirm = function () {
+            setAutoLogin("true");
+        }
+        // 基准大小
+        const baseSize = 16
+        // 设置 rem 函数
+        function setRem() {
+            // 当前页面宽度相对于 1920 宽的缩放比例，可根据自己需要修改。
+            const scale = document.documentElement.clientWidth / 1920
+            // 设置页面根节点字体大小, 字体大小最小为12
+            let fontSize = (baseSize * Math.min(scale, 2)) > 12 ? (baseSize * Math.min(scale, 2)) : 12;
+            document.documentElement.style.fontSize = fontSize + 'px'
+        }
+        //初始化
+        setRem()
+        //改变窗口大小时重新设置 rem,这里最好加上节流
+        window.onresize = function () {
+            setRem()
+        }
+
+        //var defaultLang = localStorage.getItem('defaultLang') || (navigator.language.includes('zh') ? 'zh' : 'en');
+        var lang = navigator.language || navigator.userLanguage;
+        var defaultLang = localStorage.getItem('defaultLang') || (lang.indexOf('zh') > -1 ? 'zh' : 'en');
+        var qwCode = getQueryString("code");
+        var ddCode = getQueryString("code");
+        var isComeFrom = isComeFrom();
+        var sliderVerify = getCookie("sliderVerify");
+        //console.log("sliderVerify:   "  +sliderVerify);
+        if (sliderVerify == 'false') {
+            displayAliSlider();
+        }
+        function displayErr(msg) {
+            if (msg != null && msg != "") {
+                Qmsg.error(translateItem(defaultLang, msg))
+            }
+            else {
+                errorStr = "";
+                if (errorStr != "") {
+                    ////console.log("dtb errorStr: " + errorStr);
+                    Qmsg.error(translateItem(defaultLang, errorStr))
+                    if (errorStr == "mailuidpwderror") {
+                        displayAliSlider();
+                    }
+                }
+            }
+        }
+        function displayInfo(msg) {
+            //  const infoHtml = `<span data-i18n="${msg}"></span>`
+            //       $("#infoMsg").html(infoHtml).show()
+            //     translatePage(defaultLang);
+            Qmsg.info(translateItem(defaultLang, msg))
+        }
+
+        // qwCode如果null,body不显示 你的要求，可是走这个 433咋回事？
+        // if (!qwCode) {
+        //   $("body").html('')
+        //   return
+        // }
+        // 是手机端不显示二维码
+        if (isComeFrom == 'wx' && qwCode) {
+            $("#login-container").hide();
+            $("#sk-fading-circle").show();
+            loginByQWCode(qwCode);
+        }
+        if (isComeFrom == 'wx' && !qwCode) {
+            $("#login-container").hide();
+            $("#sk-fading-circle").show();
+            getQYWXCode();
+        }
+        /*if (isComeFrom=='' && !qwCode) {
+          $("#sk-fading-circle").hide();
+          displayqrcode();
+          // 一分钟刷一次微信登录二维码
+          setInterval(function () { displayqrcode() }, 60000)
+        }
+        if (isComeFrom=='' && qwCode) {
+          $("#sk-fading-circle").hide();
+          loginByQWCode(qwCode);
+        }*/
+
+        if (isComeFrom == 'dd' && ddCode) {
+            $("#login-container").hide();
+            $("#sk-fading-circle").show();
+            loginByDDCode(ddCode);
+        }
+        if (isComeFrom == 'dd' && !ddCode) {
+            //alert("钉钉环境，没code")
+            $("#login-container").hide();
+            $("#sk-fading-circle").show();
+            getDDCode();
+        }
+        if (isComeFrom == 'phone' && !ddCode) {
+            // alert(isComeFrom)
+            $("#sk-fading-circle").hide();
+            $("#dd-login").hide();
+        }
+        if (isComeFrom == 'phone' && ddCode) {
+            $("#sk-fading-circle").hide();
+            $("#dd-login").hide();
+            loginByDDCode(ddCode);
+        }
+        if (isComeFrom == '' && !ddCode) {
+            //alert("web环境，没code")
+            //    $("#login-container").show();
+            $("#sk-fading-circle").hide();
+            displayddqrcode();
+            //一分钟刷一次DD登录二维码
+            setInterval(function () { displayddqrcode() }, 60000)
+        }
+        if (isComeFrom == '' && ddCode) {
+            //alert("web环境，有code")
+            $("#sk-fading-circle").hide();
+            loginByDDCode(ddCode);
+        }
+
+
+        function loginByQWCode(code) {
+            submitQrcodeForm(code);
+        }
+
+        function loginByDDCode(code) {
+            submitDDQrcodeForm(code);
+        }
+        function displayqrcode() {
+            var wwLogin = new WwLogin({
+                id: "qywx-qrcode",
+                appid: appid,
+                agentid: agentid,
+                redirect_uri: amUrl,
+                state: "loginState",
+                href: "data:text/css;base64,LmltcG93ZXJCb3ggLnRpdGxlLC5pbXBvd2VyQm94IC5pbmZve2Rpc3BsYXk6bm9uZTt9LndycF9jb2RlX2lmcmFtZSB7bWFyZ2luLXRvcDogMDt9",
+                lang: "zh",
+            });
+        }
+
+        function displayddqrcode() {
+            /*var goto = encodeURIComponent(
+      'https://oapi.dingtalk.com/connect/oauth2/sns_authorize?appid='+ddappid+'&response_type=code&scope=snsapi_login&state=STATE&redirect_uri='+encodeURIComponent(amUrl)
+            )
+            var obj = DDLogin({
+            id:'dd-qrcode',
+            goto:goto,
+            //style: 'border:none;background-color:#FFFFFF;',
+            width: '320', // 官方参数 365
+            height: '340' // 官方参数 400
+            })
+            var handleMessage = function(event){
+              var origin = event.origin
+              if (origin == 'https://login.dingtalk.com') {
+
+              // 判断是否来自ddLogin扫码事件。
+              var loginTmpCode = event.data
+              // 获取到loginTmpCode后就可以在这里构造跳转链接进行跳转了
+              // 此步拿到临时loginTmpCode换取正式code
+              window.location.href = 'https://oapi.dingtalk.com/connect/oauth2/sns_authorize?appid='+ddappid+'&response_type=code&scope=snsapi_login&state=STATE&redirect_uri='+
+              amUrl+'&loginTmpCode='+loginTmpCode;
+              }
+            }
+            if (typeof window.addEventListener !== 'undefined') {
+            window.addEventListener('message', handleMessage, false)
+            } else if (typeof window.attachEvent !== 'undefined') {
+            window.attachEvent('onmessage', handleMessage)
+            }*/
+            var w = $('.dd-qrcode-box').width();
+            var minw = w > 280 ? w : 280
+            $('#dd-qrcode').width(w)
+            $('#dd-qrcode').height(w)
+            var scale = w / minw > 1 ? 1 : w / minw
+            if (scale < 1) {
+                $('#dd-qrcode').css("transform", "translate(-20%, -20%) scale(" + scale + ")");
+            }
+
+
+            window.DTFrameLogin(
+                {
+                    id: 'dd-qrcode',
+                    width: minw,
+                    height: minw,
+                },
+                {
+                    redirect_uri: encodeURIComponent(amUrl),
+                    client_id: ddappid,
+                    scope: 'openid',
+                    response_type: 'code',
+                    prompt: 'consent',
+                },
+                function (loginResult) {
+                    var authCode = loginResult.authCode;
+                    // 也可以在不跳转页面的情况下，使用code进行授权
+                    loginByDDCode(authCode);
+                },
+                function (errorMsg) {
+                    // 这里一般需要展示登录失败的具体原因
+                   // alert(errorMsg);
+                }
+            );
+        }
+
+        /*默认语言*/
+        var translations = window.translations;
+        function translatePage(language) {
+            var elements = document.querySelectorAll('[data-i18n]');
+            for (var i = 0; i < elements.length; i++) {
+                var key = elements[i].getAttribute('data-i18n');
+                if (translations[language] && translations[language][key]) {
+                    elements[i].textContent = translations[language][key];
+                }
+            }
+        }
+
+        translatePage(defaultLang);
+
+        $('#forgetpwd').on('click', function () {
+
+            $('#auth').hide()
+            $('#change-pwd').show()
+            $("#chgPwdCode").val('');
+            $("#phoneNumberChange").val('');
+            $("#confirmpassword1").val('');
+            $("#newpassword1").val('');
+        });
+
+        $('#go-back').on('click', function () {
+            $('#change-pwd').hide()
+            $('#auth').show()
+        });
+
+        // 回显倒计时 ---S
+        function makeTimer(seconds, CodeBtn, flag) {
+            var __codeTimer = window['__codeTimer' + flag]
+            __codeTimer && clearInterval(__codeTimer)
+            CodeBtn.addClass('disabled').html(seconds);
+            var cacheHtml = translateItem(defaultLang, CodeBtn.attr('data-i18n'));
+            __codeTimer = setInterval(function () {
+                if (seconds > 1) {
+                    CodeBtn.html(--seconds)
+                } else {
+                    CodeBtn.html(cacheHtml).removeClass('disabled')
+                    clearInterval(__codeTimer)
+                    __codeTimer = null
+                }
+            }, 1000)
+        }
+
+        function fillMobile(dom, btnName) {
+            var codeObj = JSON.parse(localStorage.getItem("code" + btnName) || "{}")
+            var keys = Object.keys(codeObj)
+            if (keys.length) {
+                dom.val(showTimer(keys[0], btnName))
+            }
+        }
+
+        function showTimer(key, btnName) {
+            var codeObj = JSON.parse(localStorage.getItem("code" + btnName) || "{}")
+            var endTime = codeObj[key]
+            if (endTime) {
+                var currentTime = +new Date()
+                if (endTime > currentTime) {
+                    var seconds = Math.ceil((endTime - currentTime) / 1000)
+                    makeTimer(seconds, $(btnName))
+                    return key
+                } else {
+                    delete codeObj[key]
+                    localStorage.setItem('code' + btnName, JSON.stringify(codeObj))
+                    return ''
+                }
+            } else {
+                clearInterval(window['__codeTimer' + btnName])
+                var cacheHtml = translateItem(defaultLang, $(btnName).attr('data-i18n'));
+                $(btnName).html(cacheHtml).removeClass('disabled')
+            }
+        }
+
+        fillMobile($("#phoneNumber"), "#getCodeBtn")
+
+        $("#phoneNumber").bind("input", function () {
+            var key = $('#phoneNumber').val();
+            showTimer(key, "#getCodeBtn");
+        })
+
+        fillMobile($("#phoneNumberChange"), "#getCodeBtn2")
+
+        $("#phoneNumberChange").bind("input", function () {
+            var key = $('#phoneNumberChange').val();
+            showTimer(key, "#getCodeBtn2");
+        })
+        // 回显倒计时 ---E
+
+        // 切换语言 交互及功能
+        $(".language-wrapper").on("click", function (e) {
+            let $target = $(e.target);
+            while (!$target.hasClass("language-wrapper")) {
+                $target = $target.parent();
+            }
+            const languageDataset = $target[0].dataset;
+            if (languageDataset.state === "closed") {
+                languageDataset.state = "open";
+                $("#languageTriangle")
+                    .removeClass("icon-caret-down-small-copy")
+                    .addClass("icon-caret-up-small-copy");
+                $(".language-selector").show();
+            } else {
+                languageDataset.state = "closed";
+                $("#languageTriangle")
+                    .removeClass("icon-caret-up-small-copy")
+                    .addClass("icon-caret-down-small-copy");
+                $(".language-selector").hide();
+            }
+        });
+        $(".language-selector li").on("click", function (e) {
+            e.stopPropagation();
+            const languageDataset = $(".language-wrapper").get(0).dataset;
+            const currentVal = languageDataset.value;
+            const targetVal = e.target.dataset.value;
+            if (currentVal !== targetVal) {
+                if (targetVal === "1") {
+                    $("#languageIcon")
+                        .removeClass("icon-yingwen")
+                        .addClass("icon-zhongwen");
+                    $("#languageText").html('中文');
+                    defaultLang = "zh";
+                    $("#phoneLogin").show();
+                    // translatePage(defaultLang)
+                } else if (targetVal === "2") {
+                    $("#phoneLogin").hide();
+                    $("#languageIcon")
+                        .removeClass("icon-zhongwen")
+                        .addClass("icon-yingwen");
+                    $("#languageText").text("English");
+
+                    defaultLang = "en";
+                    // translatePage(defaultLang);
+                }
+                languageDataset.value = targetVal;
+            }
+            languageDataset.state = "closed";
+            $("#languageTriangle")
+                .removeClass("icon-caret-up-small-copy")
+                .addClass("icon-caret-down-small-copy");
+            $(".language-selector").hide();
+            localStorage.setItem('defaultLang', defaultLang)
+            // initPageValidator();
+            // $("#accountForm").validate().resetForm()
+            // $("#nextStepForm").validate().resetForm()
+            location.reload();
+        });
+        // if (!defaultLang.includes('zh')) {
+        if (defaultLang.indexOf('zh') == -1) {
+            $("#languageIcon")
+                .removeClass("icon-zhongwen")
+                .addClass("icon-yingwen");
+            $("#languageText").text("English");
+            var languageDataset = $(".language-wrapper").get(0).dataset;
+            languageDataset.value = 2;
+        }
+
+
+        // 校验
+
+        function initPageValidator() {
+            $.validator.addMethod("phoneNumber", function (value, element, params) {
+                //const regex = /^1[3456789]\d{9}$/;
+                //return regex.test(value)
+                return true;
+
+            }, $.validator.format(translateItem(defaultLang, 'plsEnterCorrectPhoneNumber')));
+
+            $.validator.addMethod("phoneNumberChange", function (value, element, params) {
+                //const regex = /^1[3456789]\d{9}$/;
+                //return regex.test(value)
+                return true;
+            }, $.validator.format(translateItem(defaultLang, 'plsEnterCorrectPhoneNumber')));
+
+            $.validator.addMethod("checkFormat", function (value, element, params) {
+                var hasNumber = /\d/.test(value);
+                var hasUpper = /[A-Z]/.test(value);
+                var hasLower = /[a-z]/.test(value);
+                var hasSpecial = /[\W_]/.test(value);
+
+                var count = 0;
+                if (hasNumber) count++;
+                if (hasUpper) count++;
+                if (hasLower) count++;
+                if (hasSpecial) count++;
+
+                return count >= 3;
+            }, $.validator.format(translateItem(defaultLang, 'PasswordCharacter')));
+
+
+            $("#smsCodeForm").validate({
+                rules: {
+                    code: {
+                        required: true
+                    },
+                    phoneNumberChange: {
+                        phoneNumberChange: true
+                    },
+                    newpassword1: {
+                        checkFormat: true,
+                        minlength: 8,
+                        maxlength: 32,
+                        required: true
+                    },
+                    confirmpassword1: {
+                        required: true,
+                        equalTo: "#newpassword1"
+                    },
+                },
+                messages: {
+                    code: {
+                        required: translateItem(defaultLang, 'codeRequired'),
+                    },
+                    phoneNumberChange: {
+                        required: translateItem(defaultLang, 'phoneNumberRequired')
+                    },
+                    newpassword1: {
+                        minlength: translateItem(defaultLang, 'Passwordminlength'),
+                        required: translateItem(defaultLang, 'PasswordRequired'),
+                    },
+                    confirmpassword1: {
+                        required: translateItem(defaultLang, 'confirmpasswordRequired'),
+                        equalTo: translateItem(defaultLang, 'confirmpasswordequalTo')
+                    }
+                },
+                submitHandler: function (form) {
+                    //console.log($(form).serialize());
+                }
+            });
+
+            // 密码重置
+            $("#setNewPasswordForm").validate({
+                rules: {
+                    newpassword: {
+                        checkFormat: true,
+                        minlength: 8,
+                        maxlength: 32,
+                        required: true
+                    },
+                    confirmpassword: {
+                        required: true,
+                        equalTo: "#newpassword"
+                    },
+
+                },
+                messages: {
+                    newpassword: {
+                        minlength: translateItem(defaultLang, 'Passwordminlength'),
+                        required: translateItem(defaultLang, 'PasswordRequired'),
+                    },
+                    confirmpassword: {
+                        required: translateItem(defaultLang, 'confirmpasswordRequired'),
+                        equalTo: translateItem(defaultLang, 'confirmpasswordequalTo')
+                    }
+                },
+                submitHandler: function (form) {
+                    //console.log($(form).serialize());
+                }
+            });
+
+
+            $("#accountForm").validate({
+                rules: {
+                    userEmail: {
+                        required: true
+                    },
+                    password: {
+                        required: true
+                        //  checkFormat: true,
+                        //  minlength: 8,
+                        // maxlength: 32
+                    }
+
+                },
+                messages: {
+                    userEmail: {
+                        required: translateItem(defaultLang, 'userEmailRequired'),
+                    },
+                    password: {
+                        required: translateItem(defaultLang, 'PasswordRequired'),
+                        minlength: translateItem(defaultLang, 'Passwordminlength'),
+                        maxlength: translateItem(defaultLang, 'Passwordmaxlength')
+                    }
+                },
+                submitHandler: function (form) {
+                    //console.log($(form).serialize());
+                }
+            });
+        }
+
+        initPageValidator()
+
+        $("#smsCodeFormBtn1").on("click", function () {
+            const valid = $("#smsCodeForm").valid()
+            var code = $("#chgPwdCode").val();
+            var phoneNumberChange = $("#phoneNumberChange").val();
+            const newpassword = $("#newpassword1").val();
+            const confirmpassword = $("#confirmpassword1").val();
+            var basepara = {
+                code: code,
+                pwd: confirmpassword,
+                phoneNumber: phoneNumberChange
+            };
+
+            console.log("smsCodeFormBtn1 basepara:  " + JSON.stringify(basepara));
+            // 测试显示 重置密码
+            valid && $.ajax({
+                type: "post",
+                url: changePwdByMobileUrl,
+                contentType: "application/json;utf-8",
+                data: JSON.stringify(basepara),
+                success: function (res) {
+                    // 200 成功 其他失败
+                    //console.log("accountLoginBtn juction: " + "");
+                    console.log("changePwdByMobileUrl res :  " + JSON.stringify(res));
+                    const rescode = res.code
+                    const msg = res.msg
+                    //console.log("res code rescode:  " + rescode);
+                    if (rescode == 0) {
+                        //console.log("res code 00000");
+                        displayInfo("operationok")
+                        window.location = "/mga/sps/authsvc/policy/p_dtbAuth";
+                        // 成功！！
+                    } else {
+                        // 失败提示！！
+                        displayErr(msg)
+                    }
+                }
+            });
+        })
+
+
+
+
+        $("#getCodeBtn2").on("click", function () {
+            var CodeBtn = $("#getCodeBtn2")
+            if (CodeBtn.hasClass('disabled')) return;
+            var phoneNumberChange = $("#phoneNumberChange").val();
+            phoneNumberChange1 = $("#phoneNumberChange").val();
+            //console.log("phoneNumberChange1 : " + phoneNumberChange1);
+            $("#smsCodeForm").validate().resetForm()
+            const valid = $("#smsCodeForm").validate().element($("#phoneNumberChange"))
+            if (!valid) return;
+            var basepara = {
+                smsUsage: 'changePwd',
+                phoneNumber: phoneNumberChange
+            };
+            //console.log("getSmsCodeUrl basepara:  " + JSON.stringify(basepara));
+            // 测试显示 重置密码
+            $.ajax({
+                type: "post",
+                url: getSmsCodeUrl,
+                contentType: "application/json;utf-8",
+                data: JSON.stringify({ phoneNumber: phoneNumberChange, smsUsage: 'changePwd' }),
+                success: function (res) {
+                    // 200 成功 其他失败
+
+                    //console.log("getSmsCodeUrl res22: " + JSON.stringify(res));
+                    if (res.code == 0) {
+                        var codeObj = JSON.parse(localStorage.getItem("code#getCodeBtn2") || "{}")
+                        codeObj[phoneNumberChange] = +new Date() + 60000
+                        localStorage.setItem('code#getCodeBtn2', JSON.stringify(codeObj))
+                        makeTimer(60, CodeBtn, "#getCodeBtn2");
+                        displayInfo("smscodehassent")
+                    } else {
+                        //console.log("getSmsCodeUrl getSmsCodeUrl number not  : ");
+                        displayErr(res.msg)
+                    }
+                },
+            });
+
+
+
+        });
+
+        $("#setNewPasswordBtn").on("click", function () {
+            const newpassword = $("#newpassword").val();
+            const confirmpassword = $("#confirmpassword").val();
+            const valid = $("#setNewPasswordForm").valid()
+            //console.log("phoneNumberChange1  11 :" + phoneNumberChange1);
+            valid && $.ajax({
+                type: "post",
+                url: changePwdByMobileUrl,
+                contentType: "application/json;utf-8",
+                data: JSON.stringify({ pwd: newpassword, mobile: phoneNumberChange1 }),
+                success: function (res) {
+                    // 200 成功 其他失败
+                    //console.log("accountLoginBtn juction: " + "");
+                    //console.log("changePwdByMobileUrl res :  " + JSON.stringify(res));
+                    const rescode = res.code
+                    //console.log("res code rescode:  " + rescode);
+                    if (rescode == 0) {
+                        //console.log("res code 00000");
+                        displayInfo("operationok")
+                        window.location = "/mga/sps/authsvc/policy/p_dtbAuth";
+                        // 成功！！
+                    } else {
+                        // 失败提示！！
+                        displayErr("syserr")
+                    }
+                },
+            });
+        });
+
+        $("#accountLoginBtn").click(function () {
+            //console.log("btnClickTime000: " + btnClickTime);
+            var now = new Date();
+            if (((now.getSeconds() - btnClickTime) > 1) || !btnClickTime) {
+                btnClickTime = now.getSeconds();
+                //console.log("btnClickTime: " + btnClickTime);
+                const userEmail = $("#userEmail").val()
+                const password = $("#password").val()
+                const uid = userEmail;
+                const valid = $("#accountForm").valid()
+                if (valid) {
+                    submitdtbForm(uid, password);
+                }
+            }
+            else {
+            }
+        });
+
+        $("#nextStepForm").validate({
+            rules: {
+                code: {
+                    required: true
+                },
+                phoneNumber: {
+                    phoneNumber: true
+                },
+
+            },
+            messages: {
+                code: {
+                    required: translateItem(defaultLang, 'codeRequired'),
+                },
+                phoneNumber: {
+                    required: translateItem(defaultLang, 'phoneNumberRequired')
+                }
+            },
+            submitHandler: function (form) {
+                //console.log($(form).serialize());
+            }
+        });
+
+        $("#nextStepBtn").on("click", function () {
+            const phoneNumber = $("#phoneNumber").val();
+            const code = $("#code").val();
+            const valid = $("#nextStepForm").valid()
+            if (valid) {
+                submitdtbPhoneForm(phoneNumber, code);
+            }
+        });
+
+        $("#getCodeBtn").on("click", function () {
+            var CodeBtn = $("#getCodeBtn")
+            if (CodeBtn.hasClass('disabled')) return;
+            const phoneNumber = $("#phoneNumber").val();
+            $("#nextStepForm").validate().resetForm()
+            const valid = $("#nextStepForm").validate().element($("#phoneNumber"))
+            if (!valid) return;
+
+            var basepara = {
+                smsUsage: 'phoneLogin',
+                phoneNumber: phoneNumber
+            };
+            valid && $.ajax({
+                type: "post",
+                url: getphonecodeurl,
+                contentType: "application/json;utf-8",
+                data: JSON.stringify(basepara),
+                success: function (res) {
+                    //console.log("getCodeBtn res:  " + JSON.stringify(res));
+                    if (res.code == 0) {
+                        var codeObj = JSON.parse(localStorage.getItem("code#getCodeBtn") || "{}")
+                        codeObj[phoneNumber] = +new Date() + 60000
+                        localStorage.setItem('code#getCodeBtn', JSON.stringify(codeObj))
+                        makeTimer(60, CodeBtn, "#getCodeBtn");
+                        displayInfo("smscodehassent")
+                    }
+                    else {
+                        displayErr(res.msg)
+                    }
+                },
+            });
+        });
+
+
+        $("#otpForm").validate({
+            rules: {
+                dynamicCode: {
+                    required: true
+                }
+
+            },
+            messages: {
+                dynamicCode: {
+                    required: translateItem(defaultLang, 'dynamicCodeRequired'),
+                }
+            },
+            submitHandler: function (form) {
+            }
+        });
+
+        $("#otpLoginBtn").on("click", function () {
+            const dynamicCode = $("#dynamicCode").val();
+            const valid = $("#otpForm").valid();
+            valid && $.ajax({
+                type: "post",
+                url: varifyUserOtpCodeUrl,
+                contentType: "application/json",
+                data: JSON.stringify({ code: dynamicCode }),
+                success: function (res) {
+                    const rescode = res.code
+                    if (res.code == 0 && res.msg == 'success') {
+                        $("#otpDiv").hide();
+                        $("#btnSliderDiv").hide();
+                        $("#auth").show();
+                    } else {
+                        displayErr(res.msg)
+                    }
+
+                },
+            });
+        });
+
+        function confirmEnding(str, target) {
+            const start = str.length - target.length;
+            const arr = str.substr(start, target.length);
+            if (arr == target) return true;
+            return false;
+        }
+
+        function getQueryString(name) {
+            var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)", "i");
+            var r = window.location.search.substr(1).match(reg);
+            if (r != null) {
+                return unescape(r[2]);
+            }
+            return null;
+        }
+
+
+        $(".form-tabs li").on("click", function (e) {
+            $("#accountForm").validate().resetForm()
+            $("#nextStepForm").validate().resetForm()
+            const $target = $(e.target);
+            if ($target.hasClass("current")) {
+                return false;
+            }
+            const index = $(".form-tabs li").index($target);
+
+            $target.siblings().removeClass("current");
+            $target.addClass("current");
+
+            if (index) {
+                $("#nextStepForm").show()
+                $("#accountForm").hide()
+                return
+            }
+            $("#nextStepForm").hide()
+            $("#accountForm").show()
+        });
+        function translateItem(language, key) {
+            return translations[language][key];
+        };
+        function isComeFrom() {
+            var isComWx = /wxwork/i.test(navigator.userAgent); // 是否企业微信
+            var isComDD = /DingTalk/i.test(navigator.userAgent);
+            var isPhone = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (isComWx) {
+                return "wx";
+            } else if (isComDD) {
+                return "dd";
+            } else if (isPhone) {
+                return "phone";
+            } else {
+                return "";
+            }
+        }
+        function getQYWXCode() {
+            //console.log("getQYWXCode..............");
+            var uri = window.location.href;
+            var url =
+                oauthAuthorizeUrl +
+                "?appid=" +
+                appid +
+                "&redirect_uri=" +
+                encodeURIComponent(uri) +
+                "&response_type=code&scope=snsapi_userinfo&state=loginState&agentid=" +
+                agentid;
+            window.location.href = url;
+        }
+        function getDDCode() {
+            var uri = window.location.href;
+            var url =
+                ddoauthAuthorizeUrl +
+                "?appid=" +
+                ddappid +
+                "&redirect_uri=" +
+                encodeURIComponent(uri) +
+                "&response_type=code&scope=snsapi_auth";
+            window.location.href = url;
+        }
+        function submitForm(uid) {
+            document.getElementById("uid").value = uid;
+            document.getElementById("validateForm").submit();
+        }
+        function submitdtbForm(uid, pwd) {
+            document.getElementById("dtbuid").value = uid;
+            document.getElementById("dtbpwd").value = pwd;
+            document.getElementById("dtbForm").submit();
+        }
+        function submitdtbPhoneForm(phone, code) {
+            document.getElementById("dtbphone").value = phone;
+            document.getElementById("dtbcode").value = code;
+            document.getElementById("dtbPhoneForm").submit();
+        }
+        function submitQrcodeForm(code) {
+            document.getElementById("qrcode").value = code;
+            document.getElementById("qrcodeForm").submit();
+        }
+        function submitDDQrcodeForm(code) {
+            document.getElementById("ddqrcode").value = code;
+            document.getElementById("ddqrcodeForm").submit();
+        }
+        function submitIoaForm(ticket) {
+
+            document.getElementById("ioaForm").submit();
+        }
+        function getCookie(cname) {
+            var name = cname + "=";
+            var ca = document.cookie.split(';');
+            for (var i = 0; i < ca.length; i++) {
+                var c = ca[i].trim();
+                if (c.indexOf(name) == 0) return c.substring(name.length, c.length);
+            }
+            return "";
+        }
+        function displayAliSlider() {
+            ////console.log("displaySlider ...................");
+            new initAliyunCaptcha({
+                immediate: true,
+                SceneId: '1h7ztzfz', // 场景ID。根据步骤二新建验证场景后，您可以在验证码场景列表，获取该场景的场景ID
+                prefix: 'rw2v3t', // 身份标。开通阿里云验证码2.0后，您可以在控制台概览页面的实例基本信息卡片区域，获取身份标
+                mode: 'embed', // 验证码模式。popup表示要集成的验证码模式为弹出式。无需修改
+                element: '#btnSliderDiv', //页面上预留的渲染验证码的元素，与原代码中预留的页面元素保持一致。
+                button: '#btnSlider', // 触发验证码弹窗的元素。button表示单击登录按钮后，触发captchaVerifyCallback函数。您可以根据实际使用的元素修改element的值
+                captchaVerifyCallback: aliCaptchaVerifyCallback, // 业务请求(带验证码校验)回调函数，无需修改
+                onBizResultCallback: aliOnBizResultCallback, // 业务请求结果回调函数，无需修改
+                getInstance: getAliSliderInstance, // 绑定验证码实例函数，无需修改
+                slideStyle: {
+                    width: 249,
+                    height: 30,
+                }, // 滑块验证码样式，支持自定义宽度和高度，单位为px。其中，width最小值为320 px
+                language: defaultLang, // 验证码语言类型，支持简体中文（cn）、繁体中文（tw）、英文（en）
+            });
+            ////console.log("displaySlider  111 ");
+        }
+        function getAliSliderInstance(instance) {
+            //console.log("getAliSliderInstance ............... ");
+            captcha = instance;
+            //console.log("getAliSliderInstance errorStr: "+ errorStr);
+            //console.log("getAliSliderInstance ERROR_MESSAGE: "+ "");
+            //console.log("getAliSliderInstance sliderVerify "+ getCookie("sliderVerify"));
+            if (errorStr == "mailuidpwderror" || getCookie("sliderVerify") == 'false') {
+                var uidPwdErrorCount = getCookie("uidPwdErrorCount");
+                //console.log("uidPwdErrorCount : "+uidPwdErrorCount);
+                if (uidPwdErrorCount == "") { uidPwdErrorCount = 0; }
+                uidPwdErrorCount = Number(uidPwdErrorCount);
+                uidPwdErrorCount = uidPwdErrorCount + 1;
+                if (uidPwdErrorCount < uidPwdErrorNumLimit) {
+                    //console.log("getAliSliderInstance uidPwdErrorCount: " + uidPwdErrorCount);
+                    document.cookie = "uidPwdErrorCount=" + uidPwdErrorCount;
+                    $('#accountLoginBtn').css('background-color', 'grey');
+                    $("#accountLoginBtn").prop("disabled", true);
+                    $("#forgetpwdtips").hide();
+                    $("#autologincheckspan").hide();
+                    $('#btnSlider').click();
+                    document.cookie = "sliderVerify=false";
+                }
+                else {
+                    document.cookie = "uidPwdErrorCount=0";
+                    $("#auth").hide();
+                    $("#otpDiv").show();
+                }
+            }
+        }
+
+        function aliCaptchaVerifyCallback(captchaVerifyParam) {
+            return new Promise(function (resolve, reject) {
+                $.ajax({
+                    type: "post",
+                    url: "/iiam/verifyAliSlider",
+                    contentType: "application/json;utf-8",
+                    data: JSON.stringify({
+                        captchaVerifyParam: captchaVerifyParam
+                    }),
+                    success: function (res) {
+                        const verifyResult = {
+                            captchaResult: res.data
+                            // 验证码验证是否通过，boolean类型，必选
+                        };
+                        resolve(verifyResult);
+                    },
+                    error: function () {
+                        reject()
+                    }
+                });
+            });
+        }
+        function aliOnBizResultCallback(verifyResult) {
+            if (verifyResult) {
+                // 验证通过，可继续下一步操作。
+                //console.log("验证通过，可继续下一步操作。");
+                $("#accountLoginBtn").prop("disabled", false);
+                $('#accountLoginBtn').css('background-color', '#008bd6');
+                $("#btnSliderDiv").hide();
+                $("#forgetpwdtips").show();
+                if ($("#ticket").val != '') {
+                    $("#autologincheckspan").show();
+                }
+                errorStr = "";
+                document.cookie = "sliderVerify=true";
+                // window.location.href = '/'
+            } else {
+                ////console.log("滑块安全验证不通过");
+            }
+        }
+        $(document).keydown(function (event) {
+            if (event.keyCode == 13) {
+                event.preventDefault();
+                if ($("#otpdiv").css("display") === 'block') {
+                    document.getElementById("otpLoginBtn").click();
+                }
+                if ($("#auth").css("display") === 'block') {
+                    document.getElementById("accountLoginBtn").click();
+                }
+            }
+        });
+        window.onload = function () {
+            displayErr("");
+        };
+    });
+
+
+
+
+</script>
+</body>
+
+</html>

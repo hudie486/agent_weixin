@@ -11,6 +11,7 @@ import { RunTerminal } from "@/components/RunTerminal";
 import { formatClock, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
+type RunRecord = { at: number; ok: boolean; durationMs: number | null; summary: string | null };
 type Job = {
   id: string;
   kind: "schedule" | "trigger";
@@ -25,8 +26,32 @@ type Job = {
   lastRunAt: number | null;
   lastErrorAt: number | null;
   lastErrorSummary: string | null;
+  approvers: string[];
+  approvalPreview: boolean;
+  pendingApprovalAt: number | null;
+  pendingPreview: string | null;
+  pendingRepairAt: number | null;
+  pendingRepairError: string | null;
+  runHistory: RunRecord[];
 };
-type JobsResp = { jobs: Job[]; defaultScript: string };
+type JobsResp = { jobs: Job[]; defaultScript: string; opsReportLastAt: number | null };
+
+/** 最近运行记录点阵（绿=成功 红=失败，悬停看详情） */
+function RunDots({ history }: { history: RunRecord[] }) {
+  if (!history.length) return null;
+  const recent = history.slice(-10);
+  return (
+    <span className="inline-flex items-center gap-1" title="最近运行（左旧右新）">
+      {recent.map((r, i) => (
+        <span
+          key={i}
+          className={cn("inline-block size-1.5 rounded-full", r.ok ? "bg-[var(--ok)]" : "bg-[var(--danger)]")}
+          title={`${formatClock(r.at)} ${r.ok ? "成功" : "失败"}${r.durationMs != null ? ` · ${Math.round(r.durationMs / 1000)}s` : ""}${r.summary ? `\n${r.summary}` : ""}`}
+        />
+      ))}
+    </span>
+  );
+}
 
 function CronPreview({ cron }: { cron: string }) {
   const [text, setText] = useState<string>("");
@@ -64,6 +89,8 @@ export function PeriodicPage() {
   const [creating, setCreating] = useState(false);
   const [scriptJob, setScriptJob] = useState<Job | null>(null);
   const [runJob, setRunJob] = useState<Job | null>(null);
+  const [runPreview, setRunPreview] = useState(true);
+  const [repairBusy, setRepairBusy] = useState<string | null>(null);
 
   const knownUsers = useMemo(
     () => Array.from(new Set((data?.jobs ?? []).map((j) => j.notifyUserId))),
@@ -78,6 +105,32 @@ export function PeriodicPage() {
       refresh();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "更新失败");
+    }
+  };
+
+  const approve = async (id: string, decision: "approve" | "reject") => {
+    try {
+      const r = await api.post<{ ok: boolean; message: string }>(`/periodic/jobs/${id}/approve`, { decision });
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "操作失败");
+    }
+  };
+
+  const repair = async (id: string, decision: "repair" | "dismiss") => {
+    setRepairBusy(id);
+    if (decision === "repair") toast.info("Agent 正在修复并试跑验证，可能需要几分钟…");
+    try {
+      const r = await api.post<{ ok: boolean; message: string }>(`/periodic/jobs/${id}/repair`, { decision });
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "操作失败");
+    } finally {
+      setRepairBusy(null);
     }
   };
 
@@ -106,7 +159,10 @@ export function PeriodicPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">周期任务</h1>
-          <p className="text-xs text-muted">CRON 走上海时区 · 脚本可在网页直接编辑（零 token）</p>
+          <p className="text-xs text-muted">
+            CRON 走上海时区 · 脚本可在网页直接编辑（零 token）
+            {data.opsReportLastAt ? ` · 上次巡检 ${formatRelative(data.opsReportLastAt)}` : ""}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button size="sm" onClick={refresh}>
@@ -133,16 +189,22 @@ export function PeriodicPage() {
                     <Badge>{j.kind === "schedule" ? "定时" : "触发"}</Badge>
                     {j.cronExpression && <Badge className="font-mono">{j.cronExpression}</Badge>}
                     <Badge>{j.deliveryMode === "every_run" ? "每轮推送" : "非空才推"}</Badge>
+                    {j.approvers.length > 0 && (
+                      <Badge className="text-[var(--accent)]">审批 {j.approvers.length} 人</Badge>
+                    )}
+                    {j.pendingApprovalAt && <Badge className="text-[var(--warn)]">待审批</Badge>}
+                    {j.pendingRepairAt && <Badge className="text-[var(--danger)]">待修复</Badge>}
                     {j.generationStatus && j.generationStatus !== "ready" && (
                       <Badge className="text-[var(--warn)]">{j.generationStatus}</Badge>
                     )}
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] text-muted">
                     <span>通知 {j.notifyUserId.slice(0, 22)}</span>
                     {j.kind === "schedule" && j.nextRunAt && (
                       <span className="text-[var(--accent)]">下次 {formatClock(j.nextRunAt)}</span>
                     )}
                     {j.lastRunAt && <span>上次 {formatRelative(j.lastRunAt)}</span>}
+                    <RunDots history={j.runHistory} />
                     {j.lastErrorAt && <span className="text-[var(--danger)]">· 失败：{(j.lastErrorSummary ?? "").slice(0, 40)}</span>}
                   </div>
                   {j.userPrompt && <div className="mt-1 truncate text-[11px] text-muted/70">{j.userPrompt}</div>}
@@ -179,6 +241,51 @@ export function PeriodicPage() {
                   <Trash2 className="size-3.5" />
                 </Button>
               </div>
+              {j.pendingApprovalAt && (
+                <div className="mt-3 rounded-lg border border-[var(--warn)]/30 bg-[var(--warn)]/5 p-2.5">
+                  <div className="text-[11px] font-medium text-[var(--warn)]">
+                    待审批 · {formatRelative(j.pendingApprovalAt)}
+                  </div>
+                  {j.pendingPreview && (
+                    <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-[11px] text-muted">
+                      {j.pendingPreview}
+                    </pre>
+                  )}
+                  <div className="mt-2 flex gap-1.5">
+                    <Button size="sm" variant="primary" onClick={() => approve(j.id, "approve")}>
+                      批准执行
+                    </Button>
+                    <Button size="sm" variant="subtle" onClick={() => approve(j.id, "reject")}>
+                      拒绝
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {j.pendingRepairAt && (
+                <div className="mt-3 rounded-lg border border-[var(--danger)]/30 bg-[var(--danger)]/5 p-2.5">
+                  <div className="text-[11px] font-medium text-[var(--danger)]">
+                    连续失败，待确认修复 · {formatRelative(j.pendingRepairAt)}
+                  </div>
+                  {j.pendingRepairError && (
+                    <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-[11px] text-muted">
+                      {j.pendingRepairError}
+                    </pre>
+                  )}
+                  <div className="mt-2 flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      loading={repairBusy === j.id}
+                      onClick={() => repair(j.id, "repair")}
+                    >
+                      让 Agent 修复
+                    </Button>
+                    <Button size="sm" variant="subtle" disabled={repairBusy === j.id} onClick={() => repair(j.id, "dismiss")}>
+                      忽略该错误
+                    </Button>
+                  </div>
+                </div>
+              )}
             </MotionGlassCard>
           ))}
         </div>
@@ -199,11 +306,27 @@ export function PeriodicPage() {
         {scriptJob && <ScriptEditor jobId={scriptJob.id} />}
       </Sheet>
 
-      <Sheet open={!!runJob} onClose={() => setRunJob(null)} title={`试跑 · ${runJob?.shortName ?? runJob?.id.slice(0, 8) ?? ""}`} width={640}>
+      <Sheet
+        open={!!runJob}
+        onClose={() => {
+          setRunJob(null);
+          setRunPreview(true);
+        }}
+        title={`试跑 · ${runJob?.shortName ?? runJob?.id.slice(0, 8) ?? ""}`}
+        width={640}
+      >
         {runJob && (
           <div className="space-y-2">
-            <p className="text-[11px] text-muted">立即执行 run.mjs，仅在此预览输出，不推送到平台、不改任务状态。</p>
-            <RunTerminal path={`/sse/periodic-run/${runJob.id}`} />
+            <p className="text-[11px] text-muted">
+              {runPreview
+                ? "预演模式：注入 PERIODIC_PREVIEW=1，脚本按契约不做任何有副作用的操作。输出仅在此预览，不推送平台、不改任务状态。"
+                : "真实执行：脚本逻辑真正运行（如有提交/写入等副作用会真的发生），但输出仅在此预览、不推送平台、不改任务状态。"}
+            </p>
+            <label className="flex items-center gap-2 text-[11px] text-muted">
+              <Switch checked={!runPreview} onChange={(v) => setRunPreview(!v)} />
+              <span className={cn(!runPreview && "text-[var(--danger)]")}>真实执行（切换会立刻重新运行）</span>
+            </label>
+            <RunTerminal path={`/sse/periodic-run/${runJob.id}?preview=${runPreview ? "1" : "0"}`} />
           </div>
         )}
       </Sheet>
@@ -270,12 +393,16 @@ function CreateModal({
   const [deliveryMode, setDeliveryMode] = useState<"stdout_nonempty" | "every_run">("stdout_nonempty");
   const [userPrompt, setUserPrompt] = useState("");
   const [script, setScript] = useState(defaultScript);
+  const [approvers, setApprovers] = useState("");
+  const [approvalPreview, setApprovalPreview] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (open) {
       setScript(defaultScript);
       setNotifyUserId(knownUsers[0] ?? "");
+      setApprovers("");
+      setApprovalPreview(false);
     }
   }, [open, defaultScript, knownUsers]);
 
@@ -294,6 +421,11 @@ function CreateModal({
         deliveryMode,
         userPrompt,
         script,
+        approvers: approvers
+          .split(/[\n,]/)
+          .map((s) => s.trim())
+          .filter(Boolean),
+        approvalPreview,
       });
       toast.success("任务已创建");
       onCreated();
@@ -352,6 +484,24 @@ function CreateModal({
             <input value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} className={inputClass} placeholder="任务用途" />
           </Field>
         </div>
+
+        <Field
+          label="审批人 userId（可选，逗号/换行分隔）"
+          hint="填了则到点先推审批，回复「确认」才执行、「取消」跳过、超时默认拒绝；留空=无需审批"
+        >
+          <textarea
+            value={approvers}
+            onChange={(e) => setApprovers(e.target.value)}
+            spellCheck={false}
+            className={cn(inputClass, "h-14 resize-y font-mono")}
+            placeholder="qq:c2c:xxx"
+          />
+        </Field>
+
+        <label className="flex items-center gap-2 text-[11px] text-muted">
+          <Switch checked={approvalPreview} onChange={setApprovalPreview} />
+          审批前先跑一次只读预览（脚本内以 PERIODIC_PREVIEW=1 识别，附在待审批消息里）
+        </label>
 
         <Field label="脚本 run.mjs（ESM，结果走 stdout）">
           <textarea

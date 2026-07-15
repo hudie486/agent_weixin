@@ -4,16 +4,32 @@ import { classifyNluWithLlm, type NluLlmCallContext, type NluLlmResult } from ".
 import { allNluCommandManifests, nluDomainSlashHints } from "./manifests.js";
 import { manifestsForDomainRetry } from "./domainRetry.js";
 import { logNluMatchScores } from "./matchScores.js";
+import { buildEntityHints } from "./entityGrounding.js";
+import { recentNluUtterances, recordNluUtterance } from "./recentUtterances.js";
 import type { NluResolvedIntent } from "./core.js";
 import { createLogger } from "../../logger.js";
 
 const nluLog = createLogger("nlu");
 
 export type NluClassifyContext = {
+  /** 触发用户；提供时注入实体候选与最近消息上下文 */
+  userId?: string;
   wizardActive?: boolean;
   stepId?: string;
   onLlmTimeout?: (attempt: number, maxAttempts: number) => void | Promise<void>;
 };
+
+/** 实体先行 + 最近消息：以 user content 尾部块注入（system prompt 保持静态以吃 KV 缓存） */
+function buildContextBlocks(userId: string | undefined, text: string): string[] {
+  if (!userId) return [];
+  const blocks: string[] = [];
+  const recent = recentNluUtterances(userId);
+  if (recent.length > 0) {
+    blocks.push("[最近消息]", ...recent.map((t) => `- ${t}`));
+  }
+  blocks.push(...buildEntityHints(userId, text));
+  return blocks;
+}
 
 export function intentAllowedByManifests(
   intent: NluResolvedIntent,
@@ -32,12 +48,14 @@ async function classifyOnce(
   text: string,
   manifests: NluCommandManifest[],
   context: NluClassifyContext,
+  extraContextBlocks: string[],
 ): Promise<NluLlmResult> {
   const domainHints = nluDomainSlashHints();
   const llmCtx: NluLlmCallContext = {
     wizardActive: context.wizardActive,
     stepId: context.stepId,
     domainHints,
+    extraContextBlocks,
     onAfterTimeout: context.onLlmTimeout,
   };
   return classifyNluWithLlm(text, manifests, llmCtx);
@@ -56,13 +74,17 @@ export async function classifyIntentWithNluLlm(
 
   logNluMatchScores(text, catalog);
 
-  let llm = await classifyOnce(text, full, context ?? {});
+  const ctx = context ?? {};
+  const contextBlocks = buildContextBlocks(ctx.userId, text);
+  if (ctx.userId) recordNluUtterance(ctx.userId, text);
+
+  let llm = await classifyOnce(text, full, ctx, contextBlocks);
 
   if (llm.type === "none") {
     const narrowed = manifestsForDomainRetry(catalog, text, full);
     if (narrowed) {
       nluLog.debug(`全量 NLU 未命中，按 catalog 关键词收窄到单域重试（${narrowed.length} 条命令）`);
-      llm = await classifyOnce(text, narrowed, context ?? {});
+      llm = await classifyOnce(text, narrowed, ctx, contextBlocks);
     }
   }
 

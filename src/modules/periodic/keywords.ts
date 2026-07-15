@@ -19,16 +19,21 @@ const PERIODIC_KEYWORDS: Readonly<Record<PeriodicAction, readonly string[]>> = {
   remove: ["删除", "remove"],
   enable: ["启用", "enable"],
   disable: ["停用", "disable"],
-  run: ["执行", "run", "运行"],
+  run: ["执行", "run", "运行", "试跑"],
 };
 
-/** 周期 run 的自然语言触发词（预筛 / 抽实体用） */
+/** 周期 run 的自然语言触发词（预筛 / 抽实体用；同时进 LLM manifest 的 hints） */
 export const PERIODIC_RUN_NLU_HINTS: readonly string[] = [
   "运行一遍",
   "运行一次",
   "跑一遍",
+  "跑一下",
   "手动运行",
   "执行一遍",
+  "执行一次",
+  "试跑",
+  "试跑一下",
+  "试运行",
 ];
 
 const flat = new Map<string, PeriodicAction>();

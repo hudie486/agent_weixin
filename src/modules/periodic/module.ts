@@ -1,4 +1,4 @@
-import { startPeriodicScheduler } from "../../plugins/periodic/index.js";
+import { startPeriodicScheduler, startPeriodicOpsReporter } from "../../plugins/periodic/index.js";
 import type { FrameworkContext, ModuleHandler } from "../../framework/contracts/module.js";
 
 export function startPeriodicModuleScheduler(deps: {
@@ -6,6 +6,7 @@ export function startPeriodicModuleScheduler(deps: {
   periodicQueue: { run<T>(key: string, fn: () => Promise<T>): Promise<T> };
   notify: FrameworkContext["notify"];
 }): ReturnType<typeof setInterval> {
+  startPeriodicOpsReporter({ notify: deps.notify });
   return startPeriodicScheduler({
     agentCfg: deps.agentCfg,
     periodicQueue: deps.periodicQueue,

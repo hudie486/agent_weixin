@@ -39,11 +39,21 @@ export {
   jobDirExistsForTask,
   periodicNodeExecutable,
   runScriptJobScaffold,
-  scheduleLegacyPythonMigrations,
+  runScriptPreview,
+  verifyScriptJob,
 } from "./jobScript.js";
+export { prepareJobWorkspace, WORKSPACE_CONTRACT_FILENAME } from "./workspaceContract.js";
+export {
+  autoRepairEnabled,
+  errorSignature,
+  maybeProposeRepair,
+  pendingRepairJobsForApprover,
+  resolveRepair,
+} from "./repair.js";
 
 export { executePeriodicJob, executePeriodicModifyJob } from "./runner.js";
 export { startPeriodicScheduler } from "./sched.js";
+export { startPeriodicOpsReporter } from "./opsReport.js";
 
 export { formatJobDetail, formatJobListCompact } from "./formatJobs.js";
 export {

@@ -76,6 +76,7 @@ function errText(e: unknown): string {
 export async function executePeriodicScriptJob(
   job: PeriodicJob,
   notify?: NotifyChannel,
+  opts?: { extraEnv?: Record<string, string> },
 ): Promise<PeriodicScriptRunResult> {
   if (!isScriptPayload(job.payload)) {
     await noteResult(job.id, false, "payload 非 script");
@@ -100,6 +101,7 @@ export async function executePeriodicScriptJob(
   const mode = job.payload.deliveryMode ?? "stdout_nonempty";
 
   let result: PeriodicScriptRunResult = { ok: true };
+  let startedAt = Date.now();
   try {
     try {
         for (const t of listPeriodicNotifyTargets(job)) {
@@ -127,7 +129,9 @@ export async function executePeriodicScriptJob(
       ...process.env,
       ...readInjectedEnvForUser(job.notifyUserId),
       // 额外受众的环境链接在 readInjectedEnvForUser 内按成员解析
+      ...(opts?.extraEnv ?? {}), // 审批通过的正式执行会注入 PERIODIC_APPROVED=1（安全门信号）
     };
+    startedAt = Date.now();
     const { stdout, stderr } = await execFilePromised(node, [scriptName], {
       cwd,
       env,
@@ -137,7 +141,10 @@ export async function executePeriodicScriptJob(
     const outRaw = stdout.replace(/\r/g, "");
     const errRaw = stderr.replace(/\r/g, "");
     const trimmed = outRaw.replace(/\r/g, "").trim();
-    await noteResult(job.id, true, "");
+    await noteResult(job.id, true, "", {
+      durationMs: Date.now() - startedAt,
+      outputHead: trimmed.slice(0, 160),
+    });
 
     let pushText: string | null = null;
     if (mode === "every_run") {
@@ -191,12 +198,14 @@ export async function executePeriodicScriptJob(
     }
   } catch (e: unknown) {
     const err = e as NodeJS.ErrnoException & { stdout?: Buffer | string; stderr?: Buffer | string };
+    // 包装器/脚本常把真实错误打到 stdout（并 exit 1），故 stdout 优先，别让 "Command failed" 盖掉真因
     const raw =
+      decodeChildOutput(err.stdout) ||
       decodeChildOutput(err.stderr) ||
       err.message ||
       "script failed";
     const sum = raw.trim().slice(0, 500);
-    await noteResult(job.id, false, sum);
+    await noteResult(job.id, false, sum, { durationMs: Date.now() - startedAt });
     log.warn(`job ${job.id} script failed: ${redactSecrets(redactPathsForWx(sum.slice(0, 400)))}`);
     result = { ok: false, errorSummary: sum };
   }

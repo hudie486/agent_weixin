@@ -3,9 +3,16 @@ import { loadQqBotConfig } from "./config.js";
 import { qqApiJson } from "./api.js";
 import { nextQqMsgSeq } from "./msgSeq.js";
 import { styleQqOutbound } from "./style.js";
+import { normalizeFileBuf, saveOutboxFile } from "../../web/fileOutbox.js";
 import { createLogger } from "../../logger.js";
 
 const log = createLogger("qq-deliver");
+
+function fmtSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${bytes}B`;
+}
 
 export const qqPlatformDeliver: PlatformDeliver = {
   platform: "qq",
@@ -26,9 +33,19 @@ export const qqPlatformDeliver: PlatformDeliver = {
     }
 
     if (styled.file) {
-      body.msg_type = 7;
-      body.content = styled.file.caption ?? styled.text;
-      log.warn("QQ file upload simplified; send text notice only until media API wired");
+      // QQ 官方 C2C 富媒体只支持图片/视频/语音，文件类型未开放 → 落盘生成限时下载链接
+      const buf = normalizeFileBuf(styled.file.buf);
+      if (!buf) throw new Error("QQ file deliver: invalid file buffer");
+      const saved = saveOutboxFile(buf, styled.file.fileName);
+      const hours = Math.round((saved.expiresAt - Date.now()) / 3600_000);
+      body.msg_type = 0;
+      body.content = [
+        styled.file.caption?.trim() || "文件已就绪（QQ 不支持直发文件，请用链接下载）",
+        `📎 ${saved.fileName}（${fmtSize(saved.size)}）`,
+        saved.url,
+        `链接约 ${hours} 小时内有效，需与本机同网络可达`,
+      ].join("\n");
+      log.info(`QQ file → download link: ${saved.fileName} (${fmtSize(saved.size)})`);
     }
 
     const openid = binding.externalUserId?.trim();

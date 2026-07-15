@@ -72,10 +72,16 @@ sseRoutes.get("/agent-run", (c) => {
 // 周期任务试跑：连接即执行，stdout/stderr 实时推送，结束后 done 并关闭。
 sseRoutes.get("/periodic-run/:id", (c) => {
   const id = c.req.param("id");
+  // 默认预演（PERIODIC_PREVIEW=1，契约要求无副作用）；?preview=0 真实执行脚本逻辑（仍不推送平台）。
+  const preview = c.req.query("preview") !== "0";
   return streamSSE(c, async (stream) => {
-    await streamRunJob(id, (chunk) => {
-      void stream.writeSSE({ data: JSON.stringify(chunk) });
-    });
+    await streamRunJob(
+      id,
+      (chunk) => {
+        void stream.writeSSE({ data: JSON.stringify(chunk) });
+      },
+      { preview },
+    );
     await stream.writeSSE({ event: "done", data: "1" });
   });
 });

@@ -57,6 +57,8 @@ export function prepareAliasSuggestion(userId: string, slashText: string): Alias
   const uid = userId.trim();
   const slash = slashText.replace(/／/g, "/").trim();
   if (/^\/(别名|alias)(?:\s|$)/i.test(slash)) return null; // 不建议把别名指向 /别名 自身
+  // 查询/帮助类命令：用户多半是"忘了命令查一下"，不是"那句话=这条命令"，不做别名建议
+  if (/(?:^|\s)(帮助|列表|详情|help|list)(?:\s|$)/i.test(slash)) return null;
 
   const miss = lastMissByUser.get(uid);
   lastMissByUser.delete(uid);

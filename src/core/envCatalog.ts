@@ -85,7 +85,7 @@ export const ENV_FIELDS: EnvFieldMeta[] = [
   F({ key: "WECHATBOT_LOGIN_MAX_RETRIES", category: "platform.wechat", label: "登录重试次数", effect: "restart", type: "int" }),
   F({ key: "WECHATBOT_LOGIN_RETRY_MS", category: "platform.wechat", label: "登录重试间隔 ms", effect: "restart", type: "int" }),
   F({ key: "WECHATBOT_FETCH_USE_PROXY", category: "platform.wechat", label: "强制 fetch 走代理", effect: "restart", type: "bool" }),
-  F({ key: "WX_EMOJI_STYLE", category: "platform.wechat", label: "语气 emoji", effect: "restart", type: "enum", options: ["full", "minimal", "off"] }),
+  F({ key: "WX_EMOJI_STYLE", category: "platform.wechat", label: "状态 emoji", effect: "restart", type: "enum", options: ["full", "minimal", "off"], description: "系统只在 成功/失败/警告 首行加一枚状态标记（文本已带表情则不加）；off=完全不自动加。LLM 文本原样放行，表情由其按需自加" }),
   F({ key: "WX_AGENT_STREAM_JSON", category: "platform.wechat", label: "流式 JSON 进度", effect: "restart", type: "bool" }),
   F({ key: "WX_AGENT_PROGRESS_MIN_INTERVAL_MS", category: "platform.wechat", label: "进度最小间隔 ms", effect: "restart", type: "int" }),
   F({ key: "WX_AGENT_STREAM_SEGMENT_AFTER_CHARS", category: "platform.wechat", label: "分段字符阈值", effect: "restart", type: "int" }),
@@ -162,6 +162,18 @@ export const ENV_FIELDS: EnvFieldMeta[] = [
   F({ key: "PERIODIC_SCRIPT_MAX_STDOUT_CHARS", category: "automation.periodic", label: "推送正文上限", effect: "restart", type: "int" }),
   F({ key: "NODE_CMD", category: "automation.periodic", label: "Node 解释器", effect: "restart", type: "string" }),
   F({ key: "PERIODIC_NODE_CMD", category: "automation.periodic", label: "周期专用 Node", effect: "restart", type: "string" }),
+  F({ key: "PERIODIC_AGENT_HEARTBEAT_MS", category: "automation.periodic", label: "Agent 静默心跳 ms（默认 120000，0 关）", effect: "instant", type: "int" }),
+  F({ key: "PERIODIC_SCAFFOLD_PREVIEW", category: "automation.periodic", label: "生成后试跑验证（0 关）", effect: "instant", type: "bool" }),
+  F({ key: "PERIODIC_SCAFFOLD_FIX_ROUNDS", category: "automation.periodic", label: "生成后修复轮数（默认 2）", effect: "instant", type: "int" }),
+  F({ key: "PERIODIC_PREVIEW_TIMEOUT_MS", category: "automation.periodic", label: "试跑超时 ms（默认 180000）", effect: "instant", type: "int" }),
+  F({ key: "PERIODIC_AUTO_REPAIR_ENABLE", category: "automation.periodic", label: "失败自动修复提议（0 关）", effect: "instant", type: "bool" }),
+  F({ key: "PERIODIC_REPAIR_AFTER_FAILS", category: "automation.periodic", label: "同错误连败 N 次提议修复（默认 2）", effect: "instant", type: "int" }),
+  F({ key: "PERIODIC_REPAIR_MAX_ATTEMPTS", category: "automation.periodic", label: "同签名最多修复次数（默认 1）", effect: "instant", type: "int" }),
+  F({ key: "PERIODIC_REPAIR_COOLDOWN_MS", category: "automation.periodic", label: "修复提议冷却 ms（默认 6h）", effect: "instant", type: "int" }),
+  F({ key: "PERIODIC_REPAIR_PENDING_TIMEOUT_MS", category: "automation.periodic", label: "修复提议超时撤销 ms（默认 24h）", effect: "instant", type: "int" }),
+  F({ key: "PERIODIC_OPS_REPORT_ENABLE", category: "automation.periodic", label: "运维巡检简报（0 关）", effect: "restart", type: "bool" }),
+  F({ key: "PERIODIC_OPS_REPORT_INTERVAL_H", category: "automation.periodic", label: "巡检间隔小时（默认 24）", effect: "instant", type: "int" }),
+  F({ key: "PERIODIC_OPS_REPORT_WINDOW_D", category: "automation.periodic", label: "巡检统计窗口天数（默认 7）", effect: "instant", type: "int" }),
 
   // ── Steam ──
   F({ key: "STEAM_WEB_API_KEY", category: "automation.steam", label: "Steam Web API Key", effect: "restart", type: "secret", secret: true }),
@@ -208,6 +220,8 @@ export const ENV_FIELDS: EnvFieldMeta[] = [
   F({ key: "WEB_CONSOLE_ENABLE", category: "system.web", label: "启用 Web 控制台", effect: "restart", type: "bool", def: "1" }),
   F({ key: "WEB_BIND", category: "system.web", label: "监听地址", effect: "restart", type: "string", description: "127.0.0.1=仅本机；0.0.0.0=局域网可访问" }),
   F({ key: "WEB_PORT", category: "system.web", label: "端口", effect: "restart", type: "int", placeholder: "8787" }),
+  F({ key: "WEB_PUBLIC_ORIGIN", category: "system.web", label: "对外根地址", effect: "instant", type: "url", placeholder: "http://192.168.1.5:8787", description: "文件下载链接等对外 URL 的前缀；缺省自动用局域网 IP + WEB_PORT" }),
+  F({ key: "WEB_FILE_LINK_TTL_MS", category: "system.web", label: "文件链接有效期 ms（默认 24h）", effect: "instant", type: "int" }),
 ];
 
 const FIELD_BY_KEY = new Map(ENV_FIELDS.map((f) => [f.key, f]));

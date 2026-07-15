@@ -17,6 +17,7 @@ import {
   patchPeriodicDeliveryMode,
   patchPeriodicShortName,
 } from "../../plugins/periodic/paramApply.js";
+import { jobRequiresApproval, proposeApproval } from "../../plugins/periodic/approval.js";
 import { joinWxLines } from "../../util/wxRichText.js";
 import { redactPathsForWx } from "../../util/redactPathsForWx.js";
 import { sanitizeWeChatAgentText } from "../../util/wxAgentReplySanitize.js";
@@ -198,6 +199,7 @@ export async function executePeriodicAction(ctx: FrameworkContext, action: Perio
     void (async () => {
       const sc = await runScriptJobScaffold({
         jobId,
+        notifyUserId: targetUserId,
         userInstruction: parsed.description,
         agentCfg: ctx.agentCfg,
         onStatus: async (t) => {
@@ -348,6 +350,19 @@ export async function executePeriodicAction(ctx: FrameworkContext, action: Perio
       return;
     }
     const job = resolved.job;
+    // 带审批人的任务：先跑草稿(读+算)，有待提交单据才发起审批；没单据不打扰，防误提交
+    if (jobRequiresApproval(job as PeriodicJob)) {
+      const r = await proposeApproval(job as PeriodicJob, ctx.notify);
+      const target = ctx.envelope ?? ctx.userId;
+      if (r.status === "proposed") {
+        await ctx.notify.replyText(target, "已发起审批：请在「待审批」消息里回复「确认」提交、「取消」跳过。", "info");
+      } else if (r.status === "skipped") {
+        await ctx.notify.replyText(target, `本次无需提交：${r.text || "没有待提交的单据"}`, "info");
+      } else {
+        await ctx.notify.replyText(target, `生成待审批失败：${redactPathsForWx(r.text)}`, "warn");
+      }
+      return;
+    }
     const out = await executePeriodicJob(job as PeriodicJob, ctx.agentCfg, ctx.notify).catch((e) => ({
       ok: false as const,
       errorSummary: e instanceof Error ? e.message : String(e),

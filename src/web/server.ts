@@ -24,6 +24,7 @@ import { usersRoutes } from "./routes/users.js";
 import { registerUserPurgeHandlers } from "../modules/user/registerPurgeHandlers.js";
 import { installLogCapture } from "./logCapture.js";
 import { sseRoutes } from "./sse/index.js";
+import { resolveOutboxToken } from "./fileOutbox.js";
 
 const log = createLogger("web");
 
@@ -83,6 +84,24 @@ export function startWebConsole(args: StartWebConsoleArgs): void {
   app.get("/api/ping", (c) =>
     c.json({ ok: true, now: Date.now(), startedAt: bootAt, routes: MOUNTED_API }),
   );
+
+  // 限时签名文件下载（QQ 发不了文件时走此链接；token 即鉴权，免登录）
+  app.get("/files/:token/:name?", (c) => {
+    const hit = resolveOutboxToken(c.req.param("token"));
+    if (!hit) return c.text("链接无效或已过期", 404);
+    let buf: Buffer;
+    try {
+      buf = fs.readFileSync(hit.filePath);
+    } catch {
+      return c.text("文件已被清理", 404);
+    }
+    return c.body(new Uint8Array(buf), 200, {
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(hit.fileName)}`,
+      "Content-Length": String(buf.length),
+      "Cache-Control": "no-store",
+    });
+  });
 
   // 鉴权路由（自管校验，公开可达）
   app.route("/api/auth", authRoutes);

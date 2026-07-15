@@ -1,0 +1,13 @@
+{
+  "_comment": "复制为 config.local.json 并填写。config.local.json 已在 .gitignore 忽略，切勿提交。也可改用环境变量 TS_USER / TS_PASS 等。",
+  "baseUrl": "https://tsdd.trinasolar.com/aweb_windows",
+  "username": "",
+  "password": "",
+  "overtimeName": "平时加班",
+  "reason": "开发软件以及开会",
+  "startTime": "17:30",
+  "minClockOut": "19:00",
+  "targetDate": "",
+  "headless": "1",
+  "timeoutMs": 45000
+}

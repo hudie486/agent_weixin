@@ -8,10 +8,10 @@ import path from "node:path";
 import { execFilePromised } from "../util/execFilePromised.js";
 import {
   SCRIPT_ENTRY,
-  ensureJobWorkspace,
   jobWorkspaceAbsolute,
   resolveScriptEntry,
 } from "../plugins/periodic/paths.js";
+import { prepareJobWorkspace } from "../plugins/periodic/workspaceContract.js";
 import { addJobJson, getJobsStateSnapshot } from "../plugins/periodic/state.js";
 import {
   nextCronRunMs,
@@ -31,10 +31,21 @@ function scriptTimeoutMs(): number {
   return Math.floor(base);
 }
 
-export const DEFAULT_SCRIPT = `// 周期任务脚本（ESM，node run.mjs 直接执行）
-// 结果通过 stdout 输出；空 stdout 在 stdout_nonempty 模式下不推送。
+export const DEFAULT_SCRIPT = `// 周期任务脚本（ESM，node run.mjs 直接执行）。运行时契约见本目录 AGENTS.md。
+// 结果通过 stdout 输出（每行一条推送）；空 stdout 在 stdout_nonempty 模式下不推送。
 // 第三方依赖请在本目录 package.json 的 dependencies 声明。
-console.log("hello from periodic job", new Date().toISOString());
+const preview = process.env.PERIODIC_PREVIEW === "1"; // 试跑模式：禁止任何有副作用的操作
+try {
+  const lines = [\`hello from periodic job \${new Date().toISOString()}\`]; // TODO: 业务逻辑
+  if (preview) {
+    console.log(lines.length ? \`预演：将推送 \${lines.length} 条\` : "预演：本轮无内容");
+    process.exit(0);
+  }
+  for (const line of lines) console.log(line);
+} catch (e) {
+  console.log(\`执行失败：\${e?.message ?? e}\`); // 真实原因给到用户/修复 Agent
+  process.exit(1);
+}
 `;
 
 export function readJobScript(jobId: string): { entry: string; exists: boolean; content: string } {
@@ -48,7 +59,7 @@ export async function writeJobScript(
   jobId: string,
   content: string,
 ): Promise<{ ok: true; checkError?: string }> {
-  const dir = ensureJobWorkspace(jobId);
+  const dir = prepareJobWorkspace(jobId); // 契约文档（AGENTS.md）一并就位
   const file = path.join(dir, SCRIPT_ENTRY);
   fs.writeFileSync(file, content, "utf-8");
   // 语法自检（不阻塞保存，仅回传告警）
@@ -101,7 +112,7 @@ export async function createScriptJob(input: CreateScriptJobInput): Promise<{ id
   });
   const res = JSON.parse(await addJobJson(stdin)) as { ok: boolean; job: { id: string } };
   const id = res.job.id;
-  const dir = ensureJobWorkspace(id);
+  const dir = prepareJobWorkspace(id); // 契约文档（AGENTS.md）一并就位
   fs.writeFileSync(path.join(dir, SCRIPT_ENTRY), input.script || DEFAULT_SCRIPT, "utf-8");
   return { id };
 }
@@ -122,8 +133,16 @@ export function nextRunPreview(
 
 export type RunChunk = { stream: "stdout" | "stderr" | "system"; text: string };
 
-/** 试跑：spawn node 入口并把 stdout/stderr 实时回调；不推送平台、不改任务状态、不调度下次。 */
-export function streamRunJob(jobId: string, onChunk: (c: RunChunk) => void): Promise<{ code: number | null }> {
+/**
+ * 试跑：spawn node 入口并把 stdout/stderr 实时回调；不推送平台、不改任务状态、不调度下次。
+ * 默认预演模式（PERIODIC_PREVIEW=1，契约要求脚本此时不做任何有副作用的操作）；
+ * preview=false 时真实执行脚本逻辑（仍不推送平台）。
+ */
+export function streamRunJob(
+  jobId: string,
+  onChunk: (c: RunChunk) => void,
+  opts?: { preview?: boolean },
+): Promise<{ code: number | null }> {
   let entry: string;
   try {
     entry = resolveScriptEntry(jobId, SCRIPT_ENTRY);
@@ -135,9 +154,18 @@ export function streamRunJob(jobId: string, onChunk: (c: RunChunk) => void): Pro
   const name = path.basename(entry);
   const node = periodicNodeCmd();
   const job = getJobsStateSnapshot().jobs.find((j) => j.id === jobId);
-  const env = { ...process.env, ...(job ? readInjectedEnvForUser(job.notifyUserId) : {}) };
+  const preview = opts?.preview !== false;
+  const env = {
+    ...process.env,
+    ...(job ? readInjectedEnvForUser(job.notifyUserId) : {}),
+    PERIODIC_PREVIEW: preview ? "1" : "",
+    PERIODIC_APPROVED: "",
+  };
 
-  onChunk({ stream: "system", text: `▶ ${node} ${name}（cwd=${cwd}）` });
+  onChunk({
+    stream: "system",
+    text: `▶ ${node} ${name}（cwd=${cwd}）${preview ? " · 预演 PERIODIC_PREVIEW=1" : " · 真实执行（不推送平台）"}`,
+  });
 
   return new Promise((resolve) => {
     let done = false;

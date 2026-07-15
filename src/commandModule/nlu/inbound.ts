@@ -172,6 +172,7 @@ async function resolveNluWithLlm(
 ): Promise<boolean> {
   const classified = await classifyIntentWithNluLlm(text, {
     ...context,
+    userId: inbound.userId,
     onLlmTimeout: nluLlmTimeoutNotifier(ctx, inbound),
   });
   if (classified.ok === false) {
@@ -355,6 +356,7 @@ async function tryNluInterruptWizard(
   if (!loadNluLlmConfig()) return false;
 
   const classified = await classifyIntentWithNluLlm(text, {
+    userId: inbound.userId,
     wizardActive: true,
     stepId: session.stepId,
     onLlmTimeout: nluLlmTimeoutNotifier(ctx, inbound),

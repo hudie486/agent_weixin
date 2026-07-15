@@ -1,0 +1,13 @@
+{
+  "name": "timesoft-overtime",
+  "private": true,
+  "type": "module",
+  "description": "TimeSoft 自动加班申报（无人值守，headless Playwright）",
+  "scripts": {
+    "dry": "node run.mjs",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}

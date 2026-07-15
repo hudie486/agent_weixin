@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import {
   getJobsStateSnapshot,
+  getOpsReportLastAt,
   patchJob,
   removeJob,
   setEnabled,
@@ -14,8 +15,29 @@ import {
   nextRunPreview,
   DEFAULT_SCRIPT,
 } from "../../core/periodicAdmin.js";
+import { resolveApproval } from "../../plugins/periodic/approval.js";
+import { resolveRepair } from "../../plugins/periodic/repair.js";
+import { getWebContext } from "../context.js";
 
 export const periodicRoutes = new Hono();
+
+function parseApproval(body: Record<string, unknown>): {
+  approvers: string[];
+  timeoutMs: number | null;
+  preview: boolean;
+} | null {
+  if (!Array.isArray(body.approvers)) return null;
+  const approvers = body.approvers
+    .filter((x): x is string => typeof x === "string")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const t = Number(body.approvalTimeoutMs);
+  return {
+    approvers,
+    timeoutMs: Number.isFinite(t) && t > 0 ? Math.floor(t) : null,
+    preview: Boolean(body.approvalPreview),
+  };
+}
 
 function jobView(j: ReturnType<typeof getJobsStateSnapshot>["jobs"][number]) {
   const script = isScriptPayload(j.payload) ? j.payload : null;
@@ -36,12 +58,25 @@ function jobView(j: ReturnType<typeof getJobsStateSnapshot>["jobs"][number]) {
     lastSuccessAt: j.lastSuccessAt ?? null,
     lastErrorAt: j.lastErrorAt ?? null,
     lastErrorSummary: j.lastErrorSummary ?? null,
+    approvers: j.approval?.approvers ?? [],
+    approvalTimeoutMs: j.approval?.timeoutMs ?? null,
+    approvalPreview: j.approval?.preview ?? false,
+    pendingApprovalAt: j.pendingApproval?.proposedAt ?? null,
+    pendingPreview: j.pendingApproval?.previewText ?? null,
+    pendingRepairAt: j.pendingRepair?.proposedAt ?? null,
+    pendingRepairError: j.pendingRepair?.errorSummary ?? null,
+    runHistory: (j.runHistory ?? []).map((r) => ({
+      at: r.at,
+      ok: r.ok,
+      durationMs: r.durationMs ?? null,
+      summary: r.summary ?? null,
+    })),
   };
 }
 
 periodicRoutes.get("/jobs", (c) => {
   const jobs = getJobsStateSnapshot().jobs.map(jobView);
-  return c.json({ jobs, defaultScript: DEFAULT_SCRIPT });
+  return c.json({ jobs, defaultScript: DEFAULT_SCRIPT, opsReportLastAt: getOpsReportLastAt() || null });
 });
 
 periodicRoutes.post("/jobs", async (c) => {
@@ -57,6 +92,10 @@ periodicRoutes.post("/jobs", async (c) => {
       userPrompt: String(body.userPrompt ?? ""),
       script: typeof body.script === "string" ? body.script : DEFAULT_SCRIPT,
     });
+    const approval = parseApproval(body);
+    if (approval && approval.approvers.length > 0) {
+      patchJob(r.id, { approval });
+    }
     return c.json({ ok: true, id: r.id });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 422);
@@ -81,6 +120,8 @@ periodicRoutes.patch("/jobs/:id", async (c) => {
     ) {
       patch.payload = { ...job.payload, deliveryMode: body.deliveryMode };
     }
+    const approval = parseApproval(body);
+    if (approval) patch.approval = approval.approvers.length > 0 ? approval : null;
     if (Object.keys(patch).length > 0) patchJob(id, patch);
     return c.json({ ok: true });
   } catch (e) {
@@ -120,4 +161,26 @@ periodicRoutes.put("/jobs/:id/script", async (c) => {
 periodicRoutes.post("/preview-cron", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { cron?: string; tz?: string };
   return c.json(nextRunPreview(String(body.cron ?? ""), body.tz));
+});
+
+/** 审批：decision=approve→执行；reject→跳过本次。用于「待审批」任务的网页批准/拒绝。 */
+periodicRoutes.post("/jobs/:id/approve", async (c) => {
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as { decision?: string };
+  const decision = body.decision === "reject" ? "reject" : "approve";
+  const agentCfg = getWebContext()?.agentCfg;
+  if (!agentCfg) return c.json({ error: "Web 运行态未就绪" }, 500);
+  const res = await resolveApproval(id, decision, { agentCfg });
+  return c.json(res, res.ok ? 200 : 422);
+});
+
+/** 修复提议拍板：decision=repair→Agent 修复并试跑验证（同步等待，可能数分钟）；dismiss→忽略该错误签名。 */
+periodicRoutes.post("/jobs/:id/repair", async (c) => {
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as { decision?: string };
+  const decision = body.decision === "dismiss" ? "dismiss" : "repair";
+  const agentCfg = getWebContext()?.agentCfg;
+  if (!agentCfg) return c.json({ error: "Web 运行态未就绪" }, 500);
+  const res = await resolveRepair(id, decision, { agentCfg });
+  return c.json(res, res.ok ? 200 : 422);
 });

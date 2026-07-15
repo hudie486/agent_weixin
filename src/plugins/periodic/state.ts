@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import type { GenerationStatus, PeriodicJob, PeriodicStateFile } from "./types.js";
+import type {
+  GenerationStatus,
+  PeriodicJob,
+  PeriodicStateFile,
+  PendingApprovalState,
+  PendingRepairState,
+  RepairGuardState,
+} from "./types.js";
 import { stripIllFormedUtf16 } from "../../util/unicode.js";
 import { writeJsonAtomic, cleanStaleTmp } from "../../util/atomicJson.js";
 import { cronTzName, migrateScheduleJobCron, nextCronRunMs } from "./cron.js";
@@ -41,6 +48,7 @@ const PATCH_KEYS = new Set([
   "cronExpression",
   "cronTimeZone",
   "notifyTargets",
+  "approval",
 ]);
 
 export function periodicStatePath(): string {
@@ -150,8 +158,19 @@ export async function setEnabled(id: string, enabled: boolean): Promise<void> {
   storeSetEnabled(id, enabled);
 }
 
-export async function noteResult(id: string, ok: boolean, summary: string): Promise<void> {
-  storeNoteResult(id, ok, stripIllFormedUtf16(summary));
+export type NoteResultMeta = {
+  durationMs?: number;
+  /** 成功时的 stdout 头部（用于运行历史/巡检的空输出漂移检测） */
+  outputHead?: string;
+};
+
+export async function noteResult(
+  id: string,
+  ok: boolean,
+  summary: string,
+  meta?: NoteResultMeta,
+): Promise<void> {
+  storeNoteResult(id, ok, stripIllFormedUtf16(summary), meta);
 }
 
 export async function bumpNext(id: string): Promise<void> {
@@ -327,6 +346,24 @@ export function patchJob(id: string, patch: Record<string, unknown>): PeriodicJo
           j.notifyTargets = next;
           continue;
         }
+        if (k === "approval") {
+          if (v == null) {
+            j.approval = null;
+            continue;
+          }
+          if (typeof v !== "object") continue;
+          const o = v as Record<string, unknown>;
+          const approvers = Array.isArray(o.approvers)
+            ? o.approvers.map((x) => sanitizeStr(String(x ?? "").trim())).filter(Boolean)
+            : [];
+          const timeoutRaw = Number(o.timeoutMs);
+          j.approval = {
+            approvers,
+            timeoutMs: Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? Math.floor(timeoutRaw) : null,
+            preview: Boolean(o.preview),
+          };
+          continue;
+        }
         if (k === "cronExpression" && j.kind === "schedule") {
           const ex = sanitizeStr(String(v ?? "").trim());
           if (!ex) continue;
@@ -360,7 +397,10 @@ export function patchJob(id: string, patch: Record<string, unknown>): PeriodicJo
   });
 }
 
-function storeNoteResult(id: string, ok: boolean, summary: string): void {
+/** 运行历史环形缓冲长度 */
+const RUN_HISTORY_MAX = 20;
+
+function storeNoteResult(id: string, ok: boolean, summary: string, meta?: NoteResultMeta): void {
   const jid = id.trim();
   const sum = sanitizeStr(summary.trim());
   withStateSave((data) => {
@@ -378,6 +418,15 @@ function storeNoteResult(id: string, ok: boolean, summary: string): void {
         j.lastErrorAt = now;
         j.lastErrorSummary = sum ? sum.slice(0, 500) : "error";
       }
+      const rec: NonNullable<PeriodicJob["runHistory"]>[number] = { at: now, ok };
+      if (typeof meta?.durationMs === "number" && meta.durationMs >= 0) {
+        rec.durationMs = Math.floor(meta.durationMs);
+      }
+      const recSummary = ok ? (meta?.outputHead ?? "") : (sum || "error");
+      rec.summary = sanitizeStr(recSummary).slice(0, 160);
+      const hist = Array.isArray(j.runHistory) ? j.runHistory : [];
+      hist.push(rec);
+      j.runHistory = hist.slice(-RUN_HISTORY_MAX);
     }
     if (!found) throw new Error("job not found");
   });
@@ -450,5 +499,93 @@ function storeSetMissedEstimate(jobId: string, estimate: number): void {
       }
     }
     throw new Error("job not found");
+  });
+}
+
+/** 置为待审批（审批门控用） */
+export function setPendingApproval(id: string, state: PendingApprovalState): void {
+  const jid = id.trim();
+  withStateSave((data) => {
+    for (const j of data.jobs) {
+      if (String(j.id) === jid) {
+        j.pendingApproval = { proposedAt: state.proposedAt, previewText: state.previewText ?? null };
+        return;
+      }
+    }
+    throw new Error("job not found");
+  });
+}
+
+/** 清除待审批 */
+export function clearPendingApproval(id: string): void {
+  const jid = id.trim();
+  withStateSave((data) => {
+    for (const j of data.jobs) {
+      if (String(j.id) === jid) {
+        j.pendingApproval = null;
+        return;
+      }
+    }
+  });
+}
+
+/** 置为待修复确认（失败自动介入用） */
+export function setPendingRepair(id: string, state: PendingRepairState): void {
+  const jid = id.trim();
+  withStateSave((data) => {
+    for (const j of data.jobs) {
+      if (String(j.id) === jid) {
+        j.pendingRepair = {
+          proposedAt: state.proposedAt,
+          errorSignature: sanitizeStr(state.errorSignature).slice(0, 160),
+          errorSummary: sanitizeStr(state.errorSummary).slice(0, 500),
+        };
+        return;
+      }
+    }
+    throw new Error("job not found");
+  });
+}
+
+/** 清除待修复确认 */
+export function clearPendingRepair(id: string): void {
+  const jid = id.trim();
+  withStateSave((data) => {
+    for (const j of data.jobs) {
+      if (String(j.id) === jid) {
+        j.pendingRepair = null;
+        return;
+      }
+    }
+  });
+}
+
+/** 更新自动修复护栏状态（整体覆盖） */
+export function setRepairGuard(id: string, guard: RepairGuardState): void {
+  const jid = id.trim();
+  withStateSave((data) => {
+    for (const j of data.jobs) {
+      if (String(j.id) === jid) {
+        j.repairGuard = {
+          signature: guard.signature != null ? sanitizeStr(guard.signature).slice(0, 160) : null,
+          attempts: Math.max(0, Math.floor(guard.attempts ?? 0)),
+          lastProposedAt: guard.lastProposedAt ?? null,
+          lastAttemptAt: guard.lastAttemptAt ?? null,
+        };
+        return;
+      }
+    }
+    throw new Error("job not found");
+  });
+}
+
+/** 运维巡检：上次简报时间 */
+export function getOpsReportLastAt(): number {
+  return withState((data) => data.opsReport?.lastAt ?? 0);
+}
+
+export function setOpsReportLastAt(ts: number): void {
+  withStateSave((data) => {
+    data.opsReport = { lastAt: ts };
   });
 }

@@ -26,6 +26,8 @@ export type NluLlmCallContext = {
   wizardActive?: boolean;
   stepId?: string;
   domainHints?: string[];
+  /** 附加上下文块（实体候选/最近消息等），追加在 user content 末尾，不影响 system prompt 缓存 */
+  extraContextBlocks?: string[];
   /** DeepSeek 单次请求超时后回调（仅 timeout，不含网络错误） */
   onAfterTimeout?: (attempt: number, maxAttempts: number) => void | Promise<void>;
 };
@@ -42,7 +44,7 @@ function buildSystemPrompt(manifests: NluCommandManifest[], domainHints: string[
       : "";
   return [
     "你是微信/QQ 机器人的命令意图解析器。只输出 JSON，不要 markdown。",
-    '第一步先判断用户是否【明确想执行】下方某条命令。若是闲聊、提问、查询事实（如问时间/天气/新闻/为什么）、表达情绪、或与下方命令无关，一律输出 {"none":true}，不要勉强匹配、不要硬凑。',
+    '第一步先判断用户是否【明确想执行】下方某条命令。若是闲聊、提问、查询事实（如问时间/天气/新闻/为什么）、表达情绪、评论功能好坏、征求意见、或与下方命令无关，一律输出 {"none":true}，不要勉强匹配、不要硬凑。',
     "只有确实想执行某命令时，才从下方选最匹配的一项，并按 slots 定义从用户整句提取槽位（键名必须与 slots 完全一致）。把握不准就给较低 confidence 或直接 none。",
     domainBlock,
     "槽位提取原则：",
@@ -54,6 +56,14 @@ function buildSystemPrompt(manifests: NluCommandManifest[], domainHints: string[
     "- user.notify：userId=对象指称, text=消息正文",
     "- user.shortname：shortName=要设置的简称",
     "- periodicJobId / codeAlias：填任务或项目指称，不是整句需求",
+    "user 消息末尾可能带方括号上下文块（[已知实体]=可选的槽位候选；[最近消息]=之前几句，供理解指代）：它们只是参考，槽位值仍以当前这句为准；[已知实体] 出现时优先从候选中选 jobRef。",
+    "示例（判断口径参考）：",
+    '- 「帮我看看我的定时任务」→ {"intent":{"domain":"periodic","action":"list","slots":{},"confidence":0.95}}',
+    '- 「加班申报那个任务改成每天早上9点跑」→ {"intent":{"domain":"periodic","action":"modify","slots":{"jobRef":"加班申报","instruction":"改成每天早上9点跑"},"confidence":0.9}}',
+    '- 「跑一下steam特惠」→ {"intent":{"domain":"periodic","action":"run","slots":{"jobRef":"steam特惠"},"confidence":0.85}}',
+    '- 「周期任务这个功能做得挺好的」→ {"none":true}（评论功能，不是要执行）',
+    '- 「你说我要不要写个脚本自动打卡」→ {"none":true}（征求意见，不是命令）',
+    '- 「今天天气怎么样」→ {"none":true}',
     "输出格式之一：",
     '{"intent":{"domain":"periodic","action":"list","slots":{},"confidence":0.9}}',
     '{"none":true}',
@@ -124,10 +134,14 @@ async function classifyNluWithLlmOnce(
   if (manifests.length === 0) return { type: "none", reason: "no_manifests" };
 
   const url = `${cfg.baseUrl}/chat/completions`;
-  const userContent =
-    context.wizardActive && context.stepId
-      ? `${userText}\n[context: wizardActive stepId=${context.stepId}]`
-      : userText;
+  const contentParts = [userText];
+  if (context.wizardActive && context.stepId) {
+    contentParts.push(`[context: wizardActive stepId=${context.stepId}]`);
+  }
+  if (context.extraContextBlocks?.length) {
+    contentParts.push(...context.extraContextBlocks);
+  }
+  const userContent = contentParts.join("\n");
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), attemptTimeoutMs);

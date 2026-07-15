@@ -35,7 +35,7 @@ export function periodicAgentInstruction(): string {
   return [
     "若用户要新建周期任务，引导使用命令：/周期 创建 …（可选 stdout_nonempty 或 every_run，详见 /周期 help）。",
     "不要谎称已通过对话写入任务 JSON；创建唯一入口为上述命令。",
-    "确认类回复请简短中文并可含贴切 emoji（如 ✅ 📅）。",
+    "确认类回复请简短中文；emoji 按需使用，贴切才加。",
     periodicAgentStructuredHints(),
   ].join("\n");
 }

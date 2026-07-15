@@ -41,6 +41,11 @@ function loadOrCreateSecret(): Buffer {
   return buf;
 }
 
+/** 供其它签名场景（如临时文件下载令牌）复用同一密钥 */
+export function getWebSecret(): Buffer {
+  return loadOrCreateSecret();
+}
+
 function b64url(buf: Buffer): string {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

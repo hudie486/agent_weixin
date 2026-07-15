@@ -8,11 +8,14 @@ import { legacyWizardStep } from "./legacyWizardStep.js";
 import { nluDispatchStep } from "./nluDispatchStep.js";
 import { nluMissHintStep } from "./nluMissHintStep.js";
 import { nluSlotStep } from "./nluSlotStep.js";
+import { periodicApprovalStep } from "./periodicApprovalStep.js";
 import { slashCommandStep } from "./slashCommandStep.js";
 import { wizardOrNluStep } from "./wizardOrNluStep.js";
 
 export function buildDefaultInboundChain(moduleRegistry: ModuleRegistry): InboundChainStep[] {
   return [
+    // 周期任务·审批回复（有待审批且回复确认/取消时短路）
+    periodicApprovalStep,
     slashCommandStep,
     nluSlotStep,
     wizardOrNluStep,
