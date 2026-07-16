@@ -1,2 +1,3 @@
-2026/07/15-08:20:52.719 4398 Creating DB E:\my\agent_2.0\scripts\glmg\.chrome-profile\Default\shared_proto_db\metadata since it was missing.
-2026/07/15-08:20:52.729 4398 Reusing MANIFEST E:\my\agent_2.0\scripts\glmg\.chrome-profile\Default\shared_proto_db\metadata/MANIFEST-000001
+2026/07/16-09:50:10.264 6f5c Reusing MANIFEST E:\my\agent_2.0\scripts\glmg\.chrome-profile\Default\shared_proto_db\metadata/MANIFEST-000001
+2026/07/16-09:50:10.265 6f5c Recovering log #3
+2026/07/16-09:50:10.265 6f5c Reusing old log E:\my\agent_2.0\scripts\glmg\.chrome-profile\Default\shared_proto_db\metadata/000003.log 

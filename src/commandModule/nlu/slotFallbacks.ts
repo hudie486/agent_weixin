@@ -16,5 +16,13 @@ export function applyNluSlotFallbacks(
   if (desc.domain === "periodic" && desc.action === "modify" && !out.instruction?.trim()) {
     out.instruction = u;
   }
+  if (desc.domain === "periodic" && desc.action === "create" && !out.description?.trim()) {
+    // 去掉常见前缀后作描述
+    const body = u
+      .replace(/^(请)?(帮我)?(创建|新建|加一个|添加)(一个)?(周期|定时)?(任务)?[，,：:\s]*/i, "")
+      .replace(/^任务内容(参考|为)?[：:\s]*/i, "")
+      .trim();
+    out.description = body || u;
+  }
   return out;
 }

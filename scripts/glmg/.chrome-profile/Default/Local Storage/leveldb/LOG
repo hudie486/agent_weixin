@@ -1,2 +1,6 @@
-2026/07/15-08:20:52.588 b90c Creating DB E:\my\agent_2.0\scripts\glmg\.chrome-profile\Default\Local Storage\leveldb since it was missing.
-2026/07/15-08:20:52.599 b90c Reusing MANIFEST E:\my\agent_2.0\scripts\glmg\.chrome-profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/16-09:50:10.092 82f4 Reusing MANIFEST E:\my\agent_2.0\scripts\glmg\.chrome-profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/16-09:50:10.097 82f4 Recovering log #3
+2026/07/16-09:50:10.098 82f4 Reusing old log E:\my\agent_2.0\scripts\glmg\.chrome-profile\Default\Local Storage\leveldb/000003.log 
+2026/07/16-10:16:40.629 8388 Level-0 table #5: started
+2026/07/16-10:16:40.633 8388 Level-0 table #5: 21094 bytes OK
+2026/07/16-10:16:40.634 8388 Delete type=0 #3

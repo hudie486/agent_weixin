@@ -3,9 +3,21 @@ import { getCommandCatalog, type CommandCatalog } from "./catalog.js";
 import type { CommandParamDef, DomainCatalogMeta } from "./descriptor.js";
 import type { ModuleDomain } from "../contracts/module.js";
 import type { FrameworkContext } from "../contracts/module.js";
+import {
+  buildPeriodicCreateSub,
+  parsePeriodicCreateSub,
+  periodicCreateParams,
+} from "../../modules/periodic/createDescriptor.js";
 
 const PERIODIC_JOB_ACTIONS = new Set(["run", "detail", "modify", "remove", "enable", "disable"]);
 const CODE_ALIAS_ACTIONS = new Set(["compile", "default", "remove", "config", "fix"]);
+const PERIODIC_CREATE_NLU_HINTS = [
+  "创建周期任务",
+  "新建定时任务",
+  "加一个定时任务",
+  "创建定时任务",
+  "帮我建个周期任务",
+] as const;
 
 function periodicJobParam(required: boolean, _usage: string): CommandParamDef {
   return {
@@ -42,6 +54,9 @@ function legacyRestParam(usage: string): CommandParamDef {
 
 function paramsForAction(domain: ModuleDomain, action: string, usage: string): readonly CommandParamDef[] {
   if (action === "help") return [];
+  if (domain === "periodic" && action === "create") {
+    return periodicCreateParams();
+  }
   if (domain === "periodic" && action === "modify") {
     return [
       periodicJobParam(true, usage),
@@ -70,6 +85,9 @@ function buildSubForAction(
   collected: Record<string, string>,
 ): string {
   const head = kws[0] ?? spec.action;
+  if (spec.domain === "periodic" && spec.action === "create") {
+    return buildPeriodicCreateSub(collected);
+  }
   if (spec.domain === "periodic" && spec.action === "modify") {
     const ref = collected.jobRef?.trim();
     const inst = collected.instruction?.trim();
@@ -102,18 +120,25 @@ export function registerLegacySlashDomain(args: {
   for (const spec of args.specs) {
     const kws = args.keywords[spec.action] ?? [spec.action];
     const params = paramsForAction(spec.domain, spec.action, spec.usage);
+    const mergedHints =
+      spec.domain === "periodic" && spec.action === "create"
+        ? [...PERIODIC_CREATE_NLU_HINTS, ...(args.nluHints?.[spec.action] ?? [])]
+        : args.nluHints?.[spec.action];
     args.catalog.register(
       {
         domain: spec.domain,
         action: spec.action,
         keywords: [...kws],
-        nluHints: args.nluHints?.[spec.action],
+        nluHints: mergedHints,
         wizardMenuLabel: kws[0],
         usage: spec.usage,
         summary: spec.summary,
         params,
         buildSub: (c) => buildSubForAction(kws, spec, c),
         parseSub: (rest): Record<string, string> => {
+          if (spec.domain === "periodic" && spec.action === "create") {
+            return parsePeriodicCreateSub(rest);
+          }
           if (spec.domain === "periodic" && spec.action === "modify") {
             const t = rest.trim();
             const agentIdx = t.search(/\s+agent\s+/i);

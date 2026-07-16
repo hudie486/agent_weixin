@@ -8,7 +8,9 @@ import {
 } from "../../framework/commands/runtime.js";
 import { isAdminVerified } from "../../security/adminAuth.js";
 import { catalogResolverFor } from "../../framework/commands/legacyRegister.js";
-import { collectNluSlots } from "../paramCollector.js";
+import { collectNluSlots, isParamsComplete } from "../paramCollector.js";
+import { parsePeriodicCreate } from "../../modules/periodic/createDescriptor.js";
+import { CREATE_CONFIRM_OK } from "../../modules/periodic/createDescriptor.js";
 
 export type NluResolvedIntent = {
   domain: ModuleDomain;
@@ -38,13 +40,33 @@ export async function dispatchNluIntent(ctx: FrameworkContext, intent: NluResolv
     return true;
   }
 
-  const collected = collectNluSlots(ctx, catalog, cmd, intent.slots, intent.sourceUtterance);
+  // 已由 Plan 填齐的 slots 优先；仅在缺参时再跑推断兜底
+  let collected = { ...intent.slots };
+  if (!isParamsComplete(catalog, cmd, collected)) {
+    collected = collectNluSlots(ctx, catalog, cmd, intent.slots, intent.sourceUtterance);
+  }
+  if (cmd.domain === "periodic" && cmd.action === "create" && !collected.confirm) {
+    collected = { ...collected, confirm: CREATE_CONFIRM_OK };
+  }
+
   const sub = cmd.buildSub(collected);
   const resolver =
-    actionResolversSingleton[intent.domain as keyof typeof actionResolversSingleton]
-    ?? catalogResolverFor(intent.domain);
+    actionResolversSingleton[intent.domain as keyof typeof actionResolversSingleton] ??
+    catalogResolverFor(intent.domain);
   const parsed = resolver(sub);
   if (!parsed) return false;
+
+  // create：执行前校验，避免再次落到 Usage
+  if (cmd.domain === "periodic" && cmd.action === "create") {
+    if (!parsePeriodicCreate(parsed.rest)) {
+      await ctx.notify.replyText(
+        ctx.envelope ?? ctx.userId,
+        "创建参数仍不完整，请补充任务类型、执行时间或描述后再试。",
+        "warn",
+      );
+      return true;
+    }
+  }
 
   await ctx.notify.replyPlain(ctx.envelope ?? ctx.userId, `好的，接下来：${cmd.summary}`);
 

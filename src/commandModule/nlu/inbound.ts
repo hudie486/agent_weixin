@@ -11,11 +11,7 @@ import {
   wizardStateFilePath,
 } from "../../wizard/stateStore.js";
 import { dispatchNluIntent, type NluResolvedIntent } from "./core.js";
-import {
-  draftNluCancel,
-  draftNluInvalidChoice,
-
-} from "./dialogue.js";
+import { draftNluCancel, draftNluInvalidChoice } from "./dialogue.js";
 import { styleNluDialogue, type NluStyleKind } from "./promptStyle.js";
 import {
   isSessionExpired,
@@ -23,6 +19,7 @@ import {
   setSession,
   type DisambiguateSession,
   type NluSlotfillSession,
+  type PlanSession,
 } from "../interactionSession.js";
 import {
   isNluEnabled,
@@ -32,17 +29,27 @@ import {
   NLU_LLM_RETRY_USER_HINT,
 } from "./config.js";
 import { getCommandRegistrySingleton } from "../../framework/commands/runtime.js";
-import type { CommandParamDef } from "../../framework/commands/descriptor.js";
+import type { CommandDescriptor, CommandParamDef } from "../../framework/commands/descriptor.js";
 import {
   applyParamAnswer,
   buildNluParamPromptDraft,
-  collectNluSlots,
-  findNextParamIndex,
+  collectNluSlotsWithMeta,
   getActiveParams,
   isParamsComplete,
 } from "../paramCollector.js";
 import { classifyIntentWithNluLlm } from "./resolve.js";
 import { createLogger } from "../../logger.js";
+import {
+  applyPlanAnswer,
+  buildPlanSteps,
+  createPlanSession,
+  renderPlanForIm,
+  skipOptionalSlot,
+  toPlanSnapshot,
+  type PlanSnapshot,
+} from "../../interaction/index.js";
+import { CREATE_CONFIRM_OK, parsePeriodicCreate } from "../../modules/periodic/createDescriptor.js";
+import type { ModuleDomain } from "../../framework/contracts/module.js";
 
 const nluLog = createLogger("nlu");
 
@@ -71,15 +78,13 @@ async function replyNluInteraction(
   await ctx.notify.replyPlain(inbound, text);
 }
 
-async function promptNluParam(
+async function replyPlanSnapshot(
   ctx: FrameworkContext,
   inbound: InboundEnvelope,
-  param: CommandParamDef,
-  collected: Record<string, string>,
-): Promise<{ choiceValues?: string[] }> {
-  const built = buildNluParamPromptDraft(ctx, param, collected);
-  await replyNluInteraction(ctx, inbound, built.draft, "slot_prompt", { param });
-  return { choiceValues: built.choiceValues };
+  snapshot: PlanSnapshot,
+  kind: NluStyleKind = "slot_prompt",
+): Promise<void> {
+  await replyNluInteraction(ctx, inbound, renderPlanForIm(snapshot), kind);
 }
 
 function tryMatchEnumByLabel(text: string, param: CommandParamDef): string | null {
@@ -122,6 +127,29 @@ function asWizardCtx(ctx: FrameworkContext): WizardHandlerCtx {
   };
 }
 
+async function promptCurrentPlanStep(
+  ctx: FrameworkContext,
+  inbound: InboundEnvelope,
+  session: PlanSession,
+  desc: CommandDescriptor,
+): Promise<{ choiceValues?: string[] }> {
+  const snapshot = toPlanSnapshot(session, desc);
+  const step = session.steps[session.stepIndex];
+
+  if (step?.type === "slot") {
+    const param = (desc.params ?? []).find((p) => p.name === step.paramName);
+    if (param) {
+      const built = buildNluParamPromptDraft(ctx, param, session.collected);
+      await replyNluInteraction(ctx, inbound, built.draft, "slot_prompt", { param });
+      return { choiceValues: built.choiceValues };
+    }
+  }
+
+  await replyPlanSnapshot(ctx, inbound, snapshot, step?.type === "confirm" ? "clarify" : "slot_prompt");
+  return {};
+}
+
+/** Plan 优先：推断 + 选项 + 确认；参数已齐则直接 dispatch */
 async function startSlotfillOrDispatch(
   ctx: FrameworkContext,
   inbound: InboundEnvelope,
@@ -134,31 +162,70 @@ async function startSlotfillOrDispatch(
   if (!desc) return false;
 
   const utterance = originalUtterance?.trim() ?? "";
-  const collected = collectNluSlots(ctx, catalog, desc, { ...intent.slots }, utterance);
+  const meta = collectNluSlotsWithMeta(ctx, catalog, desc, { ...intent.slots }, utterance);
+  let collected = meta.collected;
 
+  // create 走 Plan 时打标，激活 confirm 槽位
+  if (desc.domain === "periodic" && desc.action === "create") {
+    collected = { ...collected, __interaction: "plan" };
+  }
+
+  // 斜杠级完整参数（含 confirm）或无参命令：直接执行
   if (isParamsComplete(catalog, desc, collected)) {
+    // create：再校验 buildSub 可解析，避免再次 Usage
+    if (desc.domain === "periodic" && desc.action === "create") {
+      const sub = desc.buildSub(collected);
+      const rest = sub.replace(/^\S+\s*/, "");
+      if (!parsePeriodicCreate(rest)) {
+        // 不完整则继续 Plan
+      } else {
+        return dispatchNluIntent(ctx, {
+          ...intent,
+          slots: collected,
+          sourceUtterance: utterance || intent.sourceUtterance,
+        });
+      }
+    } else {
+      return dispatchNluIntent(ctx, {
+        ...intent,
+        slots: collected,
+        sourceUtterance: utterance || intent.sourceUtterance,
+      });
+    }
+  }
+
+  // create 走完整 Plan；其它命令若只有简单缺参，也统一走 Plan（无 confirm 则仅 slot）
+  const steps = buildPlanSteps({
+    catalog,
+    desc,
+    collected,
+    choiceOptions: meta.choiceOptions,
+  });
+
+  // 无步骤：直接 dispatch
+  if (steps.length === 0) {
+    if (desc.domain === "periodic" && desc.action === "create") {
+      collected = { ...collected, confirm: CREATE_CONFIRM_OK };
+    }
     return dispatchNluIntent(ctx, {
       ...intent,
+      slots: collected,
       sourceUtterance: utterance || intent.sourceUtterance,
     });
   }
 
-  const idx = findNextParamIndex(catalog, desc, collected);
-  const iState = loadInteractionState(statePath);
-  const params = getActiveParams(catalog, desc, collected);
-  const param = params[idx >= 0 ? idx : 0];
-  const promptMeta = param ? await promptNluParam(ctx, inbound, param, collected) : {};
-
-  const session: NluSlotfillSession = {
-    kind: "nlu_slotfill",
+  const session = createPlanSession({
     domain: intent.domain,
     action: intent.action,
     collected,
-    paramIndex: idx >= 0 ? idx : 0,
-    updatedAt: Date.now(),
+    inferredKeys: meta.inferredKeys,
+    steps,
     originalUtterance: utterance || undefined,
-    paramChoiceValues: promptMeta.choiceValues,
-  };
+  });
+
+  const iState = loadInteractionState(statePath);
+  const promptMeta = await promptCurrentPlanStep(ctx, inbound, session, desc);
+  session.paramChoiceValues = promptMeta.choiceValues;
   setSession(iState, inbound.userId, session, statePath);
   return true;
 }
@@ -198,6 +265,193 @@ async function resolveNluWithLlm(
   );
 }
 
+async function handlePlanSessionMessage(
+  ctx: FrameworkContext,
+  inbound: InboundEnvelope,
+  text: string,
+  session: PlanSession,
+  statePath: string,
+): Promise<boolean> {
+  const catalog = getCommandCatalog();
+  const desc = catalog.get(session.domain, session.action);
+  const iState = loadInteractionState(statePath);
+  if (!desc) {
+    setSession(iState, inbound.userId, null, statePath);
+    return false;
+  }
+
+  const step = session.steps[session.stepIndex];
+  let resolvedSlotValue: string | null | undefined;
+  let slotError: string | undefined;
+  let slotPrompt: string | undefined;
+  let optionsBlock: string | undefined;
+  let newChoiceValues: string[] | undefined;
+
+  if (step?.type === "slot") {
+    const param = (desc.params ?? []).find((p) => p.name === step.paramName);
+    if (!param) {
+      setSession(iState, inbound.userId, null, statePath);
+      return dispatchNluIntent(ctx, {
+        domain: session.domain,
+        action: session.action,
+        slots: { ...session.collected, confirm: CREATE_CONFIRM_OK },
+        sourceUtterance: session.originalUtterance,
+      });
+    }
+
+    if (text.trim() === "跳过" || text.trim().toLowerCase() === "skip") {
+      const skipped = skipOptionalSlot(session, desc);
+      if (skipped.status === "cancel") {
+        setSession(iState, inbound.userId, null, statePath);
+        await replyNluInteraction(ctx, inbound, draftNluCancel(), "cancel");
+        return true;
+      }
+      if (skipped.status === "error") {
+        await replyNluInteraction(ctx, inbound, skipped.message, "error", { param });
+        return true;
+      }
+      if (skipped.status === "dispatch") {
+        setSession(iState, inbound.userId, null, statePath);
+        return dispatchNluIntent(ctx, {
+          domain: session.domain,
+          action: session.action,
+          slots: skipped.collected,
+          sourceUtterance: session.originalUtterance,
+        });
+      }
+      const promptMeta = await promptCurrentPlanStep(ctx, inbound, skipped.session, desc);
+      skipped.session.paramChoiceValues = promptMeta.choiceValues;
+      setSession(iState, inbound.userId, skipped.session, statePath);
+      return true;
+    }
+
+    if (param.kind === "enum") {
+      const enumValue = tryMatchEnumByLabel(text, param);
+      if (enumValue) {
+        resolvedSlotValue = enumValue;
+      }
+    }
+
+    if (resolvedSlotValue == null) {
+      const applied = applyParamAnswer(ctx, param, text, session.collected, session.paramChoiceValues);
+      if ("error" in applied) {
+        if (applied.error === "__exit__") {
+          setSession(iState, inbound.userId, null, statePath);
+          await replyNluInteraction(ctx, inbound, draftNluCancel(), "cancel");
+          return true;
+        }
+        slotError = typeof applied.error === "string" ? applied.error.split("\n")[0]! : "输入无效";
+        const built = buildNluParamPromptDraft(ctx, param, session.collected);
+        slotPrompt = built.draft;
+        newChoiceValues = Array.isArray(applied.choiceValues)
+          ? applied.choiceValues
+          : built.choiceValues;
+      } else {
+        resolvedSlotValue = applied[param.name] ?? "";
+      }
+    }
+  }
+
+  const result = applyPlanAnswer(session, text, {
+    catalog,
+    desc,
+    resolvedSlotValue,
+    slotError,
+    slotPrompt,
+    optionsBlock,
+    newChoiceValues,
+  });
+
+  if (result.status === "cancel") {
+    setSession(iState, inbound.userId, null, statePath);
+    await replyNluInteraction(ctx, inbound, draftNluCancel(), "cancel");
+    return true;
+  }
+
+  if (result.status === "error") {
+    await replyNluInteraction(
+      ctx,
+      inbound,
+      `${result.message}\n${renderPlanForIm(result.snapshot)}`,
+      "error",
+    );
+    setSession(iState, inbound.userId, result.session, statePath);
+    return true;
+  }
+
+  if (result.status === "dispatch") {
+    // 消歧：__disambiguate → 重建 plan
+    const d = result.collected.__disambiguate;
+    if (d) {
+      const [domain, action] = d.split(".") as [ModuleDomain, string];
+      setSession(iState, inbound.userId, null, statePath);
+      return startSlotfillOrDispatch(
+        ctx,
+        inbound,
+        {
+          domain,
+          action,
+          slots: {},
+          confidence: 1,
+          sourceUtterance: session.originalUtterance,
+        },
+        statePath,
+        session.originalUtterance,
+      );
+    }
+    setSession(iState, inbound.userId, null, statePath);
+    return dispatchNluIntent(ctx, {
+      domain: session.domain,
+      action: session.action,
+      slots: result.collected,
+      sourceUtterance: session.originalUtterance,
+    });
+  }
+
+  // continue
+  const promptMeta = await promptCurrentPlanStep(ctx, inbound, result.session, desc);
+  result.session.paramChoiceValues = promptMeta.choiceValues;
+  setSession(iState, inbound.userId, result.session, statePath);
+  return true;
+}
+
+/** 兼容旧 nlu_slotfill / disambiguate 落盘会话 */
+async function handleLegacySlotfill(
+  ctx: FrameworkContext,
+  inbound: InboundEnvelope,
+  text: string,
+  session: NluSlotfillSession,
+  statePath: string,
+): Promise<boolean> {
+  const catalog = getCommandCatalog();
+  const desc = catalog.get(session.domain, session.action);
+  const iState = loadInteractionState(statePath);
+  if (!desc) {
+    setSession(iState, inbound.userId, null, statePath);
+    return false;
+  }
+
+  // 迁移：把旧 slotfill 转成 Plan 再处理本条消息
+  const steps = buildPlanSteps({ catalog, desc, collected: session.collected });
+  // 对齐 paramIndex → stepIndex
+  let stepIndex = 0;
+  const targetParam = getActiveParams(catalog, desc, session.collected)[session.paramIndex]?.name;
+  if (targetParam) {
+    const idx = steps.findIndex((s) => s.type === "slot" && s.paramName === targetParam);
+    if (idx >= 0) stepIndex = idx;
+  }
+  const plan = createPlanSession({
+    domain: session.domain,
+    action: session.action,
+    collected: session.collected,
+    steps,
+    originalUtterance: session.originalUtterance,
+  });
+  plan.stepIndex = stepIndex;
+  plan.paramChoiceValues = session.paramChoiceValues;
+  return handlePlanSessionMessage(ctx, inbound, text, plan, statePath);
+}
+
 export async function handleNluSlotMessage(
   ctx: FrameworkContext,
   inbound: InboundEnvelope,
@@ -218,8 +472,14 @@ export async function handleNluSlotMessage(
     return true;
   }
 
+  if (session.kind === "plan") {
+    return handlePlanSessionMessage(ctx, inbound, text, session, statePath);
+  }
+
   if (session.kind === "disambiguate") {
-    const n = Number(text.replace(/[\uFF10-\uFF19]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xff10 + 0x30)).trim());
+    const n = Number(
+      text.replace(/[\uFF10-\uFF19]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xff10 + 0x30)).trim(),
+    );
     let pick = Number.isFinite(n) ? session.candidates[Math.floor(n) - 1] : undefined;
     if (!pick) {
       pick = tryPickDisambiguateCandidate(text, session.candidates) ?? undefined;
@@ -244,103 +504,11 @@ export async function handleNluSlotMessage(
     );
   }
 
-  if (session.kind !== "nlu_slotfill") return false;
-
-  const catalog = getCommandCatalog();
-  const desc = catalog.get(session.domain, session.action);
-  if (!desc) {
-    setSession(iState, inbound.userId, null, statePath);
-    return false;
+  if (session.kind === "nlu_slotfill") {
+    return handleLegacySlotfill(ctx, inbound, text, session, statePath);
   }
 
-  const params = getActiveParams(catalog, desc, session.collected);
-  const param = params[session.paramIndex];
-  if (!param) {
-    setSession(iState, inbound.userId, null, statePath);
-    return dispatchNluIntent(ctx, {
-      domain: session.domain,
-      action: session.action,
-      slots: session.collected,
-      sourceUtterance: session.originalUtterance,
-    });
-  }
-
-  if (param.kind === "enum") {
-    const enumValue = tryMatchEnumByLabel(text, param);
-    if (enumValue) {
-      const collected = { ...session.collected, [param.name]: enumValue };
-      if (isParamsComplete(catalog, desc, collected)) {
-        setSession(iState, inbound.userId, null, statePath);
-        return dispatchNluIntent(ctx, {
-          domain: session.domain,
-          action: session.action,
-          slots: collected,
-          sourceUtterance: session.originalUtterance,
-        });
-      }
-      const nextIdx = findNextParamIndex(catalog, desc, collected);
-      const nextParam = getActiveParams(catalog, desc, collected)[nextIdx >= 0 ? nextIdx : 0];
-      const promptMeta = nextParam ? await promptNluParam(ctx, inbound, nextParam, collected) : {};
-      setSession(
-        iState,
-        inbound.userId,
-        {
-          ...session,
-          collected,
-          paramIndex: nextIdx >= 0 ? nextIdx : 0,
-          updatedAt: Date.now(),
-          paramChoiceValues: promptMeta.choiceValues,
-        },
-        statePath,
-      );
-      return true;
-    }
-  }
-
-  const applied = applyParamAnswer(ctx, param, text, session.collected, session.paramChoiceValues);
-  if ("error" in applied) {
-    if (applied.error === "__exit__") {
-      setSession(iState, inbound.userId, null, statePath);
-      await replyNluInteraction(ctx, inbound, draftNluCancel(), "cancel");
-      return true;
-    }
-    const errMsg = typeof applied.error === "string" ? applied.error.split("\n")[0]! : "输入无效";
-    const built = buildNluParamPromptDraft(ctx, param, session.collected);
-    await replyNluInteraction(ctx, inbound, `${errMsg}\n${built.draft}`, "error", { param });
-    if (Array.isArray(applied.choiceValues)) {
-      const next: NluSlotfillSession = {
-        ...session,
-        paramChoiceValues: applied.choiceValues,
-        updatedAt: Date.now(),
-      };
-      setSession(iState, inbound.userId, next, statePath);
-    }
-    return true;
-  }
-
-  const collected = applied;
-  if (isParamsComplete(catalog, desc, collected)) {
-    setSession(iState, inbound.userId, null, statePath);
-    return dispatchNluIntent(ctx, {
-      domain: session.domain,
-      action: session.action,
-      slots: collected,
-      sourceUtterance: session.originalUtterance,
-    });
-  }
-
-  const nextIdx = findNextParamIndex(catalog, desc, collected);
-  const nextParam = getActiveParams(catalog, desc, collected)[nextIdx >= 0 ? nextIdx : 0];
-  const promptMeta = nextParam ? await promptNluParam(ctx, inbound, nextParam, collected) : {};
-  const next: NluSlotfillSession = {
-    ...session,
-    collected,
-    paramIndex: nextIdx >= 0 ? nextIdx : 0,
-    updatedAt: Date.now(),
-    paramChoiceValues: promptMeta.choiceValues,
-  };
-  setSession(iState, inbound.userId, next, statePath);
-  return true;
+  return false;
 }
 
 async function tryNluInterruptWizard(
@@ -433,7 +601,10 @@ export async function tryDispatchNluText(ctx: FrameworkContext, text: string): P
   const statePath = wizardStateFilePath();
 
   const existing = getInteractionSession(ctx.userId, statePath);
-  if (existing && (existing.kind === "nlu_slotfill" || existing.kind === "disambiguate")) {
+  if (
+    existing &&
+    (existing.kind === "nlu_slotfill" || existing.kind === "disambiguate" || existing.kind === "plan")
+  ) {
     return false;
   }
 

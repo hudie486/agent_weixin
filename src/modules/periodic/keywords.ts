@@ -61,7 +61,8 @@ const PERIODIC_COMMAND_SPECS: CommandSpec[] = [
   {
     domain: "periodic",
     action: "create",
-    usage: "/周期 创建 schedule|trigger ...",
+    usage:
+      "/周期 创建 schedule cron <分> <时> <日> <月> <周> [short <名>] [stdout_nonempty|every_run] <描述>",
     summary: "创建周期任务并生成脚本",
   },
   { domain: "periodic", action: "modify", usage: "/周期 修改 <ID> ...", summary: "修改周期任务" },

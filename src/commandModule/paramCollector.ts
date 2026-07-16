@@ -8,6 +8,8 @@ import { buildParamOptionsList, resolveParamValue } from "./paramResolve.js";
 import { draftNluParamPrompt } from "./nlu/dialogue.js";
 import { slotsToCollected } from "../framework/commands/nluManifest.js";
 import { applyNluSlotFallbacks } from "./nlu/slotFallbacks.js";
+import { inferPeriodicCreateDefaults } from "../modules/periodic/createInfer.js";
+import type { PlanOption } from "../interaction/planTypes.js";
 
 export function getActiveParams(
   catalog: CommandCatalog,
@@ -145,7 +147,7 @@ export function finalizeLlmSlots(
   return normalizeResolvedSlots(ctx, catalog, desc, collected);
 }
 
-/** LLM 槽位 + 原话结构性兜底 + ID 校验 */
+/** LLM 槽位 + 原话结构性兜底 + 领域推断 + ID 校验 */
 export function collectNluSlots(
   ctx: FrameworkContext,
   catalog: CommandCatalog,
@@ -153,9 +155,55 @@ export function collectNluSlots(
   llmSlots: Record<string, string>,
   utterance?: string,
 ): Record<string, string> {
+  return collectNluSlotsWithMeta(ctx, catalog, desc, llmSlots, utterance).collected;
+}
+
+/** 领域默认值推断（周期 create 等）；返回推断元数据供 Plan 使用 */
+export function collectNluSlotsWithMeta(
+  ctx: FrameworkContext,
+  catalog: CommandCatalog,
+  desc: CommandDescriptor,
+  llmSlots: Record<string, string>,
+  utterance?: string,
+): {
+  collected: Record<string, string>;
+  inferredKeys: string[];
+  choiceOptions: Record<string, PlanOption[]>;
+} {
   let collected = finalizeLlmSlots(ctx, catalog, desc, llmSlots);
   collected = applyNluSlotFallbacks(desc, collected, utterance);
-  return normalizeResolvedSlots(ctx, catalog, desc, collected);
+  const meta = applyDomainInferDefaultsMeta(desc, collected, utterance);
+  collected = normalizeResolvedSlots(ctx, catalog, desc, meta.collected);
+  return {
+    collected,
+    inferredKeys: meta.inferredKeys,
+    choiceOptions: meta.choiceOptions,
+  };
+}
+
+function applyDomainInferDefaultsMeta(
+  desc: CommandDescriptor,
+  collected: Record<string, string>,
+  utterance?: string,
+): {
+  collected: Record<string, string>;
+  inferredKeys: string[];
+  choiceOptions: Record<string, PlanOption[]>;
+} {
+  if (desc.domain === "periodic" && desc.action === "create") {
+    const r = inferPeriodicCreateDefaults(utterance ?? "", collected);
+    return {
+      collected: r.collected,
+      inferredKeys: r.inferredKeys,
+      choiceOptions: Object.fromEntries(
+        Object.entries(r.choiceOptions).map(([k, opts]) => [
+          k,
+          opts.map((o) => ({ id: o.id, label: o.label, help: o.help, value: o.value })),
+        ]),
+      ),
+    };
+  }
+  return { collected, inferredKeys: [], choiceOptions: {} };
 }
 
 export function renderParamPromptWithOptions(

@@ -37,6 +37,14 @@ describe("nluSlotFallbacks", () => {
     expect(collected.instruction).toBe("只推下线");
   });
 
+  it("uses utterance as create description when LLM omits description", () => {
+    const desc = getCommandCatalog().get("periodic", "create");
+    expect(desc).toBeTruthy();
+    const utterance = "创建周期任务，任务内容参考：https://github.com/parleychou/GlmGrap.git";
+    const out = applyNluSlotFallbacks(desc!, {}, utterance);
+    expect(out.description).toContain("github.com/parleychou/GlmGrap");
+  });
+
   it("buildSub includes agent instruction", () => {
     const desc = getCommandCatalog().get("periodic", "modify");
     expect(desc).toBeTruthy();

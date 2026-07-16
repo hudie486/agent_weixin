@@ -9,7 +9,6 @@ import {
   removeJob,
   runScriptJobScaffold,
   setEnabled,
-  type DeliveryMode,
   type PeriodicJob,
 } from "../../plugins/periodic/index.js";
 import {
@@ -28,22 +27,7 @@ import { formatCommandHelp } from "../../framework/commands/helpText.js";
 import { isAdminVerified } from "../../security/adminAuth.js";
 import { periodicJobOwnerOrAdmin, periodicJobVisibleToUser } from "../../shared/notifyTarget.js";
 import { resolvePeriodicJobByRef } from "../../plugins/periodic/jobResolve.js";
-
-type ParsedCreate =
-  | {
-      kind: "schedule";
-      cronExpression: string;
-      deliveryMode: DeliveryMode;
-      description: string;
-      shortName?: string;
-    }
-  | {
-      kind: "trigger";
-      deliveryMode: DeliveryMode;
-      description: string;
-      shortName?: string;
-    }
-  | null;
+import { parsePeriodicCreate } from "./createDescriptor.js";
 
 async function findPeriodicJobByRef(
   targetUserId: string,
@@ -66,48 +50,6 @@ async function findPeriodicJobByRef(
 function normalizeShortLabel(raw: string): string | undefined {
   const s = raw.trim().replace(/[/\\:*?"<>|]/g, "").slice(0, 24);
   return s || undefined;
-}
-
-function isDeliveryMode(s: string): boolean {
-  const x = s.toLowerCase();
-  return x === "stdout_nonempty" || x === "every_run";
-}
-
-function parsePeriodicCreate(rest: string): ParsedCreate {
-  const words = rest.trim().split(/\s+/).filter(Boolean);
-  if (words.length < 1) return null;
-  const kind = (words[0] ?? "").toLowerCase();
-  if (kind !== "schedule" && kind !== "trigger") return null;
-  let idx = 1;
-
-  let cronExpression: string | undefined;
-  if (kind === "schedule") {
-    if ((words[idx] ?? "").toLowerCase() !== "cron") return null;
-    idx += 1;
-    const fields = words.slice(idx, idx + 5);
-    if (fields.length !== 5 || fields.some((x) => !x.trim())) return null;
-    cronExpression = fields.join(" ");
-    if (validateCronExpressionFive(cronExpression, PERIODIC_CRON_TZ)) return null;
-    idx += 5;
-  }
-
-  let shortName: string | undefined;
-  if ((words[idx] ?? "").toLowerCase() === "short") {
-    const sn = words[idx + 1]?.trim();
-    if (!sn) return null;
-    shortName = normalizeShortLabel(sn);
-    if (!shortName) return null;
-    idx += 2;
-  }
-  let deliveryMode: DeliveryMode = "stdout_nonempty";
-  if (isDeliveryMode(words[idx] ?? "")) {
-    deliveryMode = words[idx]!.toLowerCase() as DeliveryMode;
-    idx += 1;
-  }
-  const description = words.slice(idx).join(" ").trim();
-  if (!description) return null;
-  if (kind === "trigger") return { kind, deliveryMode, description, shortName };
-  return { kind, cronExpression: cronExpression!, deliveryMode, description, shortName };
 }
 
 export async function executePeriodicAction(ctx: FrameworkContext, action: PeriodicAction,
@@ -154,12 +96,15 @@ export async function executePeriodicAction(ctx: FrameworkContext, action: Perio
   if (action === "create") {
     const parsed = parsePeriodicCreate(actionRest);
     if (!parsed) {
+      // 斜杠缺参：给 Usage；NLU/向导不应走到这里（上游 Plan 会拦），兜底友好提示
       await ctx.notify.replyText(
         ctx.envelope ?? ctx.userId,
         joinWxLines([
-          "Usage:",
-          "/periodic create schedule cron <m> <h> <dom> <mon> <dow> [short <name>] [stdout_nonempty|every_run] <description>",
-          "/periodic create trigger [short <name>] [stdout_nonempty|every_run] <description>",
+          "创建参数不完整。",
+          "可用自然语言再说一次（例如「创建周期任务，每天 9:50 抢购 GLM」），",
+          "或按斜杠格式：",
+          "/周期 创建 schedule cron <分> <时> <日> <月> <周> [short <名称>] [stdout_nonempty|every_run] <描述>",
+          "/周期 创建 trigger [short <名称>] [stdout_nonempty|every_run] <描述>",
         ]),
         "warn",
       );

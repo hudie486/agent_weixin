@@ -3,6 +3,7 @@ import path from "node:path";
 import { dataPaths } from "../config/paths.js";
 import type { ModuleDomain } from "../framework/contracts/module.js";
 import type { NluCommandManifest } from "../framework/commands/nluManifest.js";
+import type { PlanSession } from "../interaction/planTypes.js";
 import type { MenuOptionDef, WizardCollected } from "../wizard/types.js";
 
 export type DisambiguateCandidate = {
@@ -21,6 +22,7 @@ export type CatalogWizardSession = {
   dynamicMenuOptions?: MenuOptionDef[];
 };
 
+/** @deprecated 新流程用 kind:"plan"；保留以兼容旧会话落盘 */
 export type NluSlotfillSession = {
   kind: "nlu_slotfill";
   domain: ModuleDomain;
@@ -34,6 +36,7 @@ export type NluSlotfillSession = {
   paramChoiceValues?: string[];
 };
 
+/** @deprecated 消歧已并入 PlanSession.steps；保留兼容旧落盘 */
 export type DisambiguateSession = {
   kind: "disambiguate";
   candidates: DisambiguateCandidate[];
@@ -41,7 +44,13 @@ export type DisambiguateSession = {
   originalUtterance?: string;
 };
 
-export type InteractionSession = CatalogWizardSession | NluSlotfillSession | DisambiguateSession;
+export type { PlanSession };
+
+export type InteractionSession =
+  | CatalogWizardSession
+  | NluSlotfillSession
+  | DisambiguateSession
+  | PlanSession;
 
 export type InteractionStateFile = {
   version: 1;
